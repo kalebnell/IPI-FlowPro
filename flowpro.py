@@ -11,6 +11,7 @@ from matplotlib.gridspec import GridSpec
 import tkinter as tk
 from tkinter import ttk, font, messagebox, filedialog
 import sys
+import os
 from contextlib import suppress
 import concurrent.futures
 import subprocess
@@ -24,9 +25,13 @@ if getattr(sys, 'frozen', False):
 # reformat to exe with: pyinstaller --noconsole --onefile --icon="C:\Users\kbubn\OneDrive\Desktop\IPI\code\croppedlogo.ico" --splash="C:\Users\kbubn\OneDrive\Desktop\IPI\code\loading.png" C:\Users\kbubn\OneD
 # rive\Desktop\IPI\code\flowpro.py
 
+# TODO make saving compatable with multiple flow meters
+# TODO add a key for dual flow meters
+# TODO this may take up to x minutes on splash screen
+# TODO add working text on the splash screen
+# TODO update logo to the blue one, maybe swap sizes of flowpro and IPI names
 
 # ---------- Globals ----------
-
 running = False
 start_time = None
 url = ""
@@ -48,8 +53,8 @@ PORT2_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkd
 PORT3_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[3]/iolinkdevice/pdin/getdata"}
 PORT4_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#SUBNET = "192.168.1.0/24"
-SUBNET = "10.0.0.0/24"
+SUBNET = "192.168.1.0/24"
+#SUBNET = "10.0.0.0/24"
 
 # ---------- Detecting IP ----------
 
@@ -61,7 +66,7 @@ def build_ip_list(subnet): # return a list of each ip to ping in the subnet
 def ping_ip(ip, timeout_ms=PING_TIMEOUT_MS): # ping a given ip 
     cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
         return False
@@ -140,6 +145,11 @@ def threaded_find_master(subnet=SUBNET, max_workers=MAX_WORKERS, # main function
             concurrent.futures.wait(futures, timeout=timeout_left)
         except Exception:
             pass
+    try:
+        if pyi_splash.is_alive():
+            pyi_splash.close()
+    except Exception as e:
+        pass
 
     if found_result["ip"]: # if master is found, return its location so POST requests can be sent
         print("\nMATCH FOUND!")
@@ -178,16 +188,26 @@ def decodeFlowIFM(raw_hex): # decode raw hex data from IFM flow meter
     G_min = L_min * 0.2641720524
     return [L_min, G_min]
 
+# ---------- Pyinstaller Pathing -----------
+def resource_path(relative_path):
+    if hasattr(sys, 'frozen'):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 # ---------- Settings GUI -----------
 def combinedWindow():
     global BASE_DIR, url
+
     # ------------------- Device Detection -------------------
     def findDevice(portNum):
         deviceIDs = {
-            2015: ["Keyence FD-H20 Flow Meter","flowMeter.jpg", "f","key_flow_img.jpg"],
-            1463: ["SU8021 IFM Flow Meter",".jpg", "f","ifm_flow_img.jpg"],
-            452:  ["PN7692 IFM Pressure Sensor", ".jpg", "p","ifm_pressure_img.jpg"],
-            1313: ["EIO344 IFM Moneo Blue|Classic Adapter", ".jpg", None,"ifm_moneo_img.jpg"]
+            2015: ["Keyence FD-H20 Flow Meter", "f","images/key_flow_img.jpg"],
+            1463: ["SU8021 IFM Flow Meter", "f","images/ifm_flow_img.jpg"],
+            452:  ["PN7692 IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
+            1313: ["EIO344 IFM Moneo Blue|Classic Adapter", None,"images/ifm_moneo_img.jpg"],
+            2016: ["Keyence FD-H20 Flow Meter", "f", "images/key_flow_img.jpg"]
         }
         try:
             payload = {"code":"request","cid":-1,
@@ -222,11 +242,11 @@ def combinedWindow():
 
         portNum = int(title[-1:])
         device = findDevice(portNum)
-        img_path = os.path.join(BASE_DIR, device[3]) if device else os.path.join(BASE_DIR, "empty.jpg")
+        img_file = device[2] if device else "images/empty.jpg"
 
         def resize_image(event=None):
             try:
-                img = Image.open(img_path)
+                img = Image.open(resource_path(img_file))
                 img = img.resize((MAX_IMAGE_SIZE, MAX_IMAGE_SIZE))
                 photo = ImageTk.PhotoImage(img)
                 picture.image = photo
@@ -373,11 +393,10 @@ def combinedWindow():
     buttonStyle.configure('Big.TButton', font=('Arial',15))
     ttk.Button(leftFrame, text="Submit", command=submit, style='Big.TButton').grid(row=9, column=1, pady=5)
     
-    img_path = os.path.join(BASE_DIR, "logo.png")
     picture = tk.Canvas(leftFrame, bg="white", width=140, height=120)
     picture.grid(row=9, column=0, sticky="w", pady=5)
     try:
-        img = Image.open(img_path)
+        img = Image.open(resource_path("images/logo.png"))
         img = img.resize((140, 120))
         photo = ImageTk.PhotoImage(img)
         picture.image = photo
@@ -626,12 +645,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 try:
                     for i, port in enumerate(ports):
                         if port != None:
-                            if port[2] != None:
+                            if port[1] != None:
                                 response = requests.post(url, json=payloads[i])
                                 response.raise_for_status()
                                 resp_json = response.json()
                                 raw_hex = resp_json.get("data", {}).get("value")
-                                if port[2] == "f":
+                                if port[1] == "f":
                                     f = decodeFlowKey(raw_hex)[f_unit_index]
                                 else:
                                     p = decodeFlowKey(raw_hex)[p_unit_index]
@@ -693,8 +712,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     
 if __name__ == "__main__": # on application enter: 
-    #found = threaded_find_master() # COMMENT OUT FOR TESTING W/O MASTER
-    found = "10.0.0.2"
+    found = threaded_find_master() # COMMENT OUT FOR TESTING W/O MASTER
+    #found = "10.0.0.2"
     if found is None:
         messagebox.showerror("Error", "Could not locate IFM mater. Ensure you are on the correct network.")
     else:
