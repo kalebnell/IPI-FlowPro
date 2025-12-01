@@ -1,4 +1,4 @@
-('C:\\Users\\kaleb.nell\\Desktop\\IPI-FlowPro\\images\\loading.jpg',
+('C:\\Users\\kaleb.nell\\Desktop\\IPI-FlowPro\\images\\Loading.png',
  'C:\\Users\\kaleb.nell\\Desktop\\IPI-FlowPro\\build\\flowpro\\Splash-00.res',
  'C:\\Users\\kaleb.nell\\Desktop\\IPI-FlowPro\\build\\flowpro\\Splash-00_script.tcl',
  None,

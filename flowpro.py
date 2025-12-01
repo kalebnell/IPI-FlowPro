@@ -25,10 +25,16 @@ if getattr(sys, 'frozen', False):
 # reformat to exe with: pyinstaller --noconsole --onefile --icon="C:\Users\kbubn\OneDrive\Desktop\IPI\code\croppedlogo.ico" --splash="C:\Users\kbubn\OneDrive\Desktop\IPI\code\loading.png" C:\Users\kbubn\OneD
 # rive\Desktop\IPI\code\flowpro.py
 
+
+
+# ------- FUNCTIONALITY ----------
+# TODO increase font size of 
+
+
 # TODO make saving compatable with multiple flow meters
+
+# ------- VISUALS
 # TODO add a key for dual flow meters
-# TODO this may take up to x minutes on splash screen
-# TODO add working text on the splash screen
 # TODO update logo to the blue one, maybe swap sizes of flowpro and IPI names
 
 # ---------- Globals ----------
@@ -53,8 +59,8 @@ PORT2_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkd
 PORT3_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[3]/iolinkdevice/pdin/getdata"}
 PORT4_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SUBNET = "192.168.1.0/24"
-#SUBNET = "10.0.0.0/24"
+#SUBNET = "192.168.1.0/24"
+SUBNET = "10.0.0.0/24"
 
 # ---------- Detecting IP ----------
 
@@ -100,6 +106,7 @@ def get_master_from_arp(prefix=TARGET_MAC_PREFIX): # check the arp list to see i
 
 def threaded_find_master(subnet=SUBNET, max_workers=MAX_WORKERS, # main function for finding IFM master's ip.
                          batch_size=BATCH_SIZE, overall_timeout=OVERALL_TIMEOUT): # pings each known subnet's ips to add to arp list, then checks arp list for master
+    
     ip_list = build_ip_list(subnet)
     total = len(ip_list)
     print(f"Scanning {total} addresses on {subnet} using up to {max_workers} workers...")
@@ -203,7 +210,7 @@ def combinedWindow():
     # ------------------- Device Detection -------------------
     def findDevice(portNum):
         deviceIDs = {
-            2015: ["Keyence FD-H20 Flow Meter", "f","images/key_flow_img.jpg"],
+            2015: ["Keyence FD-H10 Flow Meter", "f","images/key_flow_img.jpg"],
             1463: ["SU8021 IFM Flow Meter", "f","images/ifm_flow_img.jpg"],
             452:  ["PN7692 IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
             1313: ["EIO344 IFM Moneo Blue|Classic Adapter", None,"images/ifm_moneo_img.jpg"],
@@ -308,6 +315,9 @@ def combinedWindow():
     pady_val = 5
     ipady_val = 3
 
+    buttonStyle = ttk.Style()
+    buttonStyle.configure('Big.TButton', font=('Arial',15))
+
     # Comboboxes
     ttk.Label(leftFrame, text="Pressure Unit").grid(row=0, column=0, pady=pady_val, sticky="w")
     pressure_unit = ttk.Combobox(leftFrame, values=["psi","bar","kpa"], font=entry_font)
@@ -328,7 +338,7 @@ def combinedWindow():
     graph_format.config(width=20)
 
     # Sample Interval
-    interval_values = ["0.5","1","5","10","30","60"]
+    interval_values = ["0.5 Seconds","1 Second ","5 Seconds","10 Seconds","30 Seconds","60 Seconds"]
     interval_var = tk.StringVar(value=interval_values[3])
 
     def pick_sample_interval():
@@ -351,9 +361,8 @@ def combinedWindow():
         listbox.bind("<<ListboxSelect>>", choose)
 
     ttk.Label(leftFrame, text="Sample Interval (s)").grid(row=3, column=0, pady=pady_val, sticky="w")
-    ttk.Button(leftFrame, textvariable=interval_var, command=pick_sample_interval).grid(
-        row=3, column=1, pady=pady_val, sticky="ew", ipady=ipady_val
-    )
+    ttk.Button(leftFrame, textvariable=interval_var, command=pick_sample_interval, style='Big.TButton').grid(
+        row=3, column=1, pady=pady_val, sticky="ew", ipady=ipady_val)
 
     # Numeric fields
     fields = ["Pressure Min","Pressure Max","Flow Min","Flow Max"]
@@ -386,11 +395,9 @@ def combinedWindow():
         results['flow_min'] = flow_min.get() if flow_min.get() != placeholder else None
         results['flow_max'] = flow_max.get() if flow_max.get() != placeholder else None
         results['filename'] = filename.get()
-        results['interval'] = interval_var.get()
+        results['interval'] = interval_var.get()[:-8]
         root.destroy()
 
-    buttonStyle = ttk.Style()
-    buttonStyle.configure('Big.TButton', font=('Arial',15))
     ttk.Button(leftFrame, text="Submit", command=submit, style='Big.TButton').grid(row=9, column=1, pady=5)
     
     picture = tk.Canvas(leftFrame, bg="white", width=140, height=120)
@@ -463,12 +470,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     
     p_max = settings.get('pressure_max')
     if p_max == '' or p_max == None:
-        p_max = 100
+        p_max = 50
     else:
         try:
             p_max = float(p_max)
         except ValueError:
-            p_max = 100
+            p_max = 50
 
     f_min = settings.get('flow_min')
     if f_min == '' or f_min == None:
@@ -481,12 +488,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     f_max = settings.get('flow_max')
     if f_max == '' or f_max == None:
-        f_max = 100
+        f_max = 10
     else:
         try:
             f_max = float(f_max)
         except ValueError:
-            f_max = 0
+            f_max = 10
     
     try:
         selected_interval = float(settings.get('interval',1.0))
@@ -652,9 +659,10 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                                 raw_hex = resp_json.get("data", {}).get("value")
                                 if port[1] == "f":
                                     f = decodeFlowKey(raw_hex)[f_unit_index]
+                                    if f < -1000: f=f_data[-1]
                                 else:
                                     p = decodeFlowKey(raw_hex)[p_unit_index]
-
+                    #p=0#########################
                     t = datetime.now()
 
                     if first_sample:
@@ -678,6 +686,16 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     x_data.append(et)
                     p_data.append(p)
                     f_data.append(f)
+
+                    if f > f_max:
+                        f_max = f+5
+                        ax2.set_ylim(f_min, f_max)
+                    if f < f_min:
+                        f_min = f-5
+                        ax2.set_ylim(f_min, f_max)
+                    if p > p_max:
+                        p_max = p+5
+                        ax1.set_ylim(p_min, p_max)
 
                     # --- Keep sliding window ---
                     if(sliding):

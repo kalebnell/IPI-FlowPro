@@ -24,4 +24,8 @@ def findDevice(portNum):
             return None
         
 
-findDevice(1)
+findDevice(4)
+#1: 2016
+#2: None
+#3: 2015
+#4: 1313
