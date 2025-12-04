@@ -270,14 +270,18 @@ def combinedWindow():
 
     # ------------------- Main Window -------------------
     root = tk.Tk()
-    root.title("FlowPro Settings + Port Overview")
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after(300, lambda: root.attributes('-topmost', False))
+    root.focus_force()
+    root.title("FlowPRO Settings + Port Overview")
     WINDOW_WIDTH = 800
-    WINDOW_HEIGHT = 600
+    WINDOW_HEIGHT = 580
     root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
     root.resizable(False, False)
 
     # Title
-    title_label = tk.Label(root, text="FlowPro Settings & Port Overview",
+    title_label = tk.Label(root, text="FlowPRO Settings & Port Overview",
                             font=("Arial", 20, "bold"), fg="blue")
     title_label.pack(pady=10)
 
@@ -297,7 +301,7 @@ def combinedWindow():
     rightFrame = ttk.Frame(main_frame, relief="solid")
     rightFrame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
 
-    # ------------------- FlowPro Settings Widgets -------------------
+    # ------------------- FlowPRO Settings Widgets -------------------
     entry_font = ("Arial", 14)
     placeholder = "Auto Scale"
     results = {}
@@ -398,13 +402,13 @@ def combinedWindow():
         results['interval'] = interval_var.get()[:-8]
         root.destroy()
 
-    ttk.Button(leftFrame, text="Submit", command=submit, style='Big.TButton').grid(row=9, column=1, pady=5)
+    ttk.Button(leftFrame, text="Submit", command=submit, style='Big.TButton').grid(row=9, column=1, pady=10)
     
-    picture = tk.Canvas(leftFrame, bg="white", width=140, height=120)
-    picture.grid(row=9, column=0, sticky="w", pady=5)
+    picture = tk.Canvas(leftFrame, bg="white", width=90, height=90)
+    picture.grid(row=9, column=0, sticky="sw", pady=10)
     try:
         img = Image.open(resource_path("images/logo.png"))
-        img = img.resize((140, 120))
+        img = img.resize((90,90))
         photo = ImageTk.PhotoImage(img)
         picture.image = photo
         picture.delete("all")
@@ -662,7 +666,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                                     if f < -1000: f=f_data[-1]
                                 else:
                                     p = decodeFlowKey(raw_hex)[p_unit_index]
-                    #p=0#########################
+                    p=0#########################
                     t = datetime.now()
 
                     if first_sample:
@@ -731,9 +735,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     
 if __name__ == "__main__": # on application enter: 
     found = threaded_find_master() # COMMENT OUT FOR TESTING W/O MASTER
-    #found = "10.0.0.2"
     if found is None:
-        messagebox.showerror("Error", "Could not locate IFM mater. Ensure you are on the correct network.")
+        messagebox.showerror("Error: Failed to Connect", "Unable to locate IPI Flow Skid. Ensure you are connected to the provided router (GL-AR300M-XXX)")
     else:
         url = "http://"+str(found)
         live_plot()
