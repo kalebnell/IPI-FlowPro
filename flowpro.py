@@ -25,17 +25,9 @@ if getattr(sys, 'frozen', False):
 # reformat to exe with: pyinstaller --noconsole --onefile --icon="C:\Users\kbubn\OneDrive\Desktop\IPI\code\croppedlogo.ico" --splash="C:\Users\kbubn\OneDrive\Desktop\IPI\code\loading.png" C:\Users\kbubn\OneD
 # rive\Desktop\IPI\code\flowpro.py
 
-
-
 # ------- FUNCTIONALITY ----------
-# TODO increase font size of 
-
-
-# TODO make saving compatable with multiple flow meters
 
 # ------- VISUALS
-# TODO add a key for dual flow meters
-# TODO update logo to the blue one, maybe swap sizes of flowpro and IPI names
 
 # ---------- Globals ----------
 running = False
@@ -49,6 +41,7 @@ port1 = None
 port2 = None
 port3 = None
 port4 = None
+dual_flow = False
 TARGET_MAC_PREFIX = "00:02:01"
 MAX_WORKERS = 50       # number of concurrent ping threads
 BATCH_SIZE = 200        # how many IPs to schedule before checking ARP table
@@ -59,8 +52,8 @@ PORT2_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkd
 PORT3_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[3]/iolinkdevice/pdin/getdata"}
 PORT4_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#SUBNET = "192.168.1.0/24"
-SUBNET = "10.0.0.0/24"
+SUBNET = "192.168.1.0/24"
+#SUBNET = "10.0.0.0/24"
 
 # ---------- Detecting IP ----------
 
@@ -133,7 +126,6 @@ def threaded_find_master(subnet=SUBNET, max_workers=MAX_WORKERS, # main function
             if found_event.is_set(): # if the ip is found, exit the scan
                 break
             if time.time() - start_time > overall_timeout: # if timeout is reached, terminate all threads and exit the scan
-                print("Overall timeout reached, stopping scan.")
                 break
 
             futures.append(exe.submit(ping_and_check, ip))
@@ -232,6 +224,8 @@ def combinedWindow():
 
     # ------------------- Port Frame Builder -------------------
     def createPortFrame(parent, title):
+        global port1, port2, port3, port4
+
         frame = ttk.Frame(parent, padding=10, relief="ridge")
         frame.grid_propagate(False)
 
@@ -249,6 +243,14 @@ def combinedWindow():
 
         portNum = int(title[-1:])
         device = findDevice(portNum)
+        if portNum == 1:
+            port1 = device
+        elif portNum == 2:
+            port2 = device
+        elif portNum == 3:
+            port3 = device
+        elif portNum == 4:
+            port4 = device
         img_file = device[2] if device else "images/empty.jpg"
 
         def resize_image(event=None):
@@ -265,7 +267,6 @@ def combinedWindow():
         picture.bind("<Configure>", resize_image)
         desc.config(text=device[0] if device else "None")
 
-        globals()[f"port{portNum}"] = device
         return frame
 
     # ------------------- Main Window -------------------
@@ -435,13 +436,20 @@ def combinedWindow():
 
 # ---------- Plotting ----------
 def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting, and saving the recorded data
-    global running
-    global current_interval
-    global selected_interval
-    global burst_mode
+    global running, current_interval, selected_interval, burst_mode, dual_flow, next_time, testnameheader, starttimeheader, pressureIDheader, flowIDheader
+    settings = combinedWindow()
+    global port1, port2, port3, port4
+    ports = [port1, port2, port3, port4]
+    flownum = 0
+    for port in ports:
+        if port is not None:
+            if port[1] == 'f':
+                flownum+=1
+    if flownum > 1:
+        dual_flow = True
 
     plt.ion()
-    settings = combinedWindow()
+    
     if len(settings) == 0:
         messagebox.showwarning("No Filename","Please retry and submit a filename.")
         return
@@ -529,6 +537,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     line_p, = ax1.plot([], [], marker="o", color="tab:blue", alpha=0.7)
     line_f, = ax2.plot([], [], marker="o", color="tab:orange", alpha=0.7)
+    if(dual_flow):
+        line_f2, = ax2.plot([], [], marker="o", color="tab:green", alpha=0.7)
     ax1.set_ylim(p_min, p_max)
     ax2.set_ylim(f_min, f_max)
 
@@ -537,10 +547,18 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     ax_readout.axis("off")
 
     # Add titles and text objects
-    ax_readout.text(0.5, 0.82, "Current Flow Readout", fontsize=12, ha='center')
-    flow_text = ax_readout.text(0.5, 0.67, "0.0", fontsize=20, ha='center', color='orange')
-    ax_readout.text(0.5, 0.5, "Current Pressure Readout", fontsize=12, ha='center')
-    pressure_text = ax_readout.text(0.5, 0.37, "0.0", fontsize=20, ha='center', color='blue')
+    if dual_flow:
+        ax_readout.text(0.5, 0.82, "High Flow Readout (FD-H20)", fontsize=12, ha='center')
+        flow_text = ax_readout.text(0.5, 0.70, "0.0", fontsize=20, ha='center', color='orange')
+        ax_readout.text(0.5, 0.62, "Low Flow Readout (FD-H10)", fontsize=12, ha='center')
+        flow_text2 = ax_readout.text(0.5, 0.5, "0.0", fontsize=20, ha='center', color='green')
+        ax_readout.text(0.5, 0.42, "Current Pressure Readout", fontsize=12, ha='center')
+        pressure_text = ax_readout.text(0.5, 0.3, "0.0", fontsize=20, ha='center', color='blue')
+    else:
+        ax_readout.text(0.5, 0.82, "Current Flow Readout", fontsize=12, ha='center')
+        flow_text = ax_readout.text(0.5, 0.67, "0.0", fontsize=20, ha='center', color='orange')
+        ax_readout.text(0.5, 0.5, "Current Pressure Readout", fontsize=12, ha='center')
+        pressure_text = ax_readout.text(0.5, 0.37, "0.0", fontsize=20, ha='center', color='blue')
     status_text = ax_readout.text(0.5, 0.97, "Stopped", fontsize = 20, ha='center',color='red', fontweight='bold')
     burst_text = ax_readout.text(0.5, 0.2, "Burst mode: Off", fontsize =12, ha='center',color='red')
 
@@ -558,7 +576,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         global start_time
         if(start_time == None):
             start_time = time.time()
-        print("Data collection started")
         status_text.set_text("Running")
         status_text.set_color("green")
         status_text.set_fontsize(20)
@@ -567,7 +584,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     def stop(event):
         global running
         running = False
-        print("Data collection stopped")
         status_text.set_text("Stopped: Safe to Exit")
         status_text.set_fontsize(15)
         status_text.set_color("red")
@@ -583,14 +599,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             next_time = time.time()
             current_interval = 0.1
             burst_mode = True
-            print("Burst mode enabled")
             burst_text.set_text("Burst mode: On")
             burst_text.set_color("green")
             plt.draw()
         else:
             current_interval = selected_interval
             burst_mode = False
-            print("Burst mode disabled")
             burst_text.set_text("Burst mode: Off")
             burst_text.set_color("red")
             plt.draw()
@@ -599,20 +613,46 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     btn_stop.on_clicked(stop)
     btn_burst.on_clicked(toggleBurst)
 
-    global next_time
     next_time = time.time()
     first_sample = True
     excelrow = 6
 
-    header = ["Time Stamp", "Elapsed Time (s)", "Pressure ("+p_unit+")","Flow Rate ("+f_unit+")"]
-
-    global testnameheader, starttimeheader, pressureIDheader, flowIDheader
-
+    if(dual_flow):
+        header = ["Time Stamp", "Elapsed Time (s)", "Pressure ("+p_unit+")","High Flow ("+f_unit+")","Low Flow ("+f_unit+")"]
+    else:
+        header = ["Time Stamp", "Elapsed Time (s)", "Pressure ("+p_unit+")","Flow Rate ("+f_unit+")"]
     testnameheader = ["Test Name", filename]
     starttimeheader = ["Test Start", starttime]
-    pressureIDheader = ["Pressure Sensor ID", "IFM PN 7692 Pressure Sensor"]
-    flowIDheader = ["Flow Meter ID", "Keyence FD-H20 Ultrasonic Flow Meter"]
+    flow_sensor1 = None
+    live_ports = {}
+    for i, port in enumerate(ports):
+        if port is not None:
+            if port[1] == 'p':
+                pressure_sensor = port[0]
+                live_ports['p'] = i
+            elif port[0] == "Keyence FD-H10 Flow Meter" or port[0] =="Keyence FD-H20 Flow Meter":
+                if dual_flow:
+                    if port[0] == "Keyence FD-H20 Flow Meter":
+                        flow_sensor1 = port[0]
+                        live_ports['f1'] = i
+                    else:
+                        flow_sensor2 = port[0]
+                        live_ports['f2'] = i
+                else:
+                    flow_sensor1 = port[0]
+                    live_ports['f'] = i
 
+    #pressureIDheader = ["Pressure Sensor ID", "TEMP"] ########################################################################
+    pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
+    try:
+        if dual_flow:
+            flowIDheader1 = ["High Flow ID", flow_sensor1]
+            flowIDheader2 = ["Low Flwo ID", flow_sensor2]
+        else:
+            flowIDheader = ["Flow Meter ID", flow_sensor1]
+    except UnboundLocalError:
+        messagebox.showerror("Error","Please ensure that all sensors are properly connected.")
+        return
     file_path = filedialog.asksaveasfilename(
         defaultextension = ".xlsx",
         filetypes = [("Excel Files", "*.xlsx"), ("All Files","*.*")],
@@ -628,7 +668,11 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         pd.DataFrame(columns=testnameheader).to_excel(writer, index = False, startrow=0)
         pd.DataFrame(columns=starttimeheader).to_excel(writer, index = False, startrow=1)
         pd.DataFrame(columns=pressureIDheader).to_excel(writer, index = False, startrow=2)
-        pd.DataFrame(columns=flowIDheader).to_excel(writer, index = False, startrow=3)
+        if dual_flow:
+            pd.DataFrame(columns=flowIDheader1).to_excel(writer, index = False, startrow=3)
+            pd.DataFrame(columns=flowIDheader2).to_excel(writer, index = False, startrow=4)
+        else:
+            pd.DataFrame(columns=flowIDheader).to_excel(writer, index = False, startrow=3)
         pd.DataFrame(columns=header).to_excel(writer, index = False, startrow=5)
         worksheet = writer.sheets['Sheet1']
         for column_cells in worksheet.columns:
@@ -645,28 +689,34 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             adjusted_width = max_length
             worksheet.column_dimensions[column_letter].width = adjusted_width
 
-        ports = [port1, port2, port3, port4]
         payloads = [PORT1_PAYLOAD, PORT2_PAYLOAD, PORT3_PAYLOAD, PORT4_PAYLOAD]
 
         # --- Main loop ---
-        x_data, p_data, f_data = [], [], []
+        x_data, p_data, f_data, f_data2 = [], [], [], []
         while plt.fignum_exists(fig.number):
             now = time.time()
             if running and now >= next_time:
                 try:
-                    for i, port in enumerate(ports):
-                        if port != None:
-                            if port[1] != None:
-                                response = requests.post(url, json=payloads[i])
-                                response.raise_for_status()
-                                resp_json = response.json()
-                                raw_hex = resp_json.get("data", {}).get("value")
-                                if port[1] == "f":
-                                    f = decodeFlowKey(raw_hex)[f_unit_index]
-                                    if f < -1000: f=f_data[-1]
-                                else:
-                                    p = decodeFlowKey(raw_hex)[p_unit_index]
-                    p=0#########################
+                    for slot, idx in live_ports.items():
+                        response = requests.post(url, json=payloads[idx])
+                        response.raise_for_status()
+                        resp_json = response.json()
+                        raw_hex = resp_json.get("data", {}).get("value")
+                        if slot == 'p':
+                            p = decodePressureIFM(raw_hex)[p_unit_index]
+                        if dual_flow:
+                            if slot == 'f1':
+                                f1 = decodeFlowKey(raw_hex)[f_unit_index]
+                                if f1 < -1000 and len(f_data)>2: f1=f_data[-1]
+                            elif slot == 'f2':
+                                f2 = decodeFlowKey(raw_hex)[f_unit_index]
+                                if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
+                        else:
+                            if slot == 'f':
+                                f = decodeFlowKey(raw_hex)[f_unit_index]
+                                if f < -1000 and len(f_data)>2: f=f_data[-1]
+
+                    #p=0#########################
                     t = datetime.now()
 
                     if first_sample:
@@ -677,9 +727,11 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     else:
                         et = round(time.time() - start_time, 2)
                         next_time += current_interval
-
                     try:
-                        df = pd.DataFrame([[t, et, p, f]], columns=header)
+                        if dual_flow:
+                            df = pd.DataFrame([[t, et, p, f1, f2]], columns=header)
+                        else:
+                            df = pd.DataFrame([[t, et, p, f]], columns=header)
                     except UnboundLocalError:
                         messagebox.showerror("Error","Please ensure that all sensors are properly connected.")
                         return
@@ -689,14 +741,32 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
                     x_data.append(et)
                     p_data.append(p)
-                    f_data.append(f)
+                    if dual_flow:
+                        f_data.append(f1)
+                        f_data2.append(f2)
+                    else:
+                        f_data.append(f)
 
-                    if f > f_max:
-                        f_max = f+5
-                        ax2.set_ylim(f_min, f_max)
-                    if f < f_min:
-                        f_min = f-5
-                        ax2.set_ylim(f_min, f_max)
+                    if dual_flow:
+                        if f1 > f_max:
+                            f_max = f1+5
+                            ax2.set_ylim(f_min, f_max)
+                        if f2 > f_max:
+                            f_max = f2+5
+                            ax2.set_ylim(f_min, f_max)
+                        if f1 < f_min:
+                            f_min = f1-5
+                            ax2.set_ylim(f_min, f_max)
+                        if f2 < f_min:
+                            f_min = f2-5
+                            ax2.set_ylim(f_min, f_max)
+                    else:
+                        if f > f_max:
+                            f_max = f+5
+                            ax2.set_ylim(f_min, f_max)
+                        if f < f_min:
+                            f_min = f-5
+                            ax2.set_ylim(f_min, f_max)
                     if p > p_max:
                         p_max = p+5
                         ax1.set_ylim(p_min, p_max)
@@ -707,17 +777,28 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                         if len(x_data) > window_size:
                             x_data = x_data[-window_size:]
                             p_data = p_data[-window_size:]
-                            f_data = f_data[-window_size:]
+                            if dual_flow:
+                                f_data = f_data[-window_size:]
+                                f_data2 = f_data2[-window_size:]
+                            else:
+                                f_data = f_data[-window_size:]
 
                     # --- Update plots ---
                     line_p.set_xdata(x_data)
                     line_p.set_ydata(p_data)
                     line_f.set_xdata(x_data)
                     line_f.set_ydata(f_data)
+                    if dual_flow:
+                        line_f2.set_xdata(x_data)
+                        line_f2.set_ydata(f_data2)
                     ax1.set_xlim(min(x_data), max(x_data))
 
                     # --- Update readouts ---
-                    flow_text.set_text(f"{f:.2f}"+f_unit)
+                    if dual_flow:
+                        flow_text.set_text(f"{f1:.2f}"+f_unit)
+                        flow_text2.set_text(f"{f2:.2f}"+f_unit)
+                    else:
+                        flow_text.set_text(f"{f:.2f}"+f_unit)
                     pressure_text.set_text(f"{p:.2f}"+p_unit)
                     plt.draw()
 
