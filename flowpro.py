@@ -9,7 +9,7 @@ import pandas as pd
 import time
 from matplotlib.gridspec import GridSpec
 import tkinter as tk
-from tkinter import ttk, font, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog
 import sys
 import os
 from contextlib import suppress
@@ -22,10 +22,7 @@ from requests_toolbelt.adapters.source import SourceAddressAdapter
 
 if getattr(sys, 'frozen', False):
     with suppress(ModuleNotFoundError):
-        import pyi_splash
-
-# reformat to exe with: pyinstaller --noconsole --onefile --icon="C:\Users\kbubn\OneDrive\Desktop\IPI\code\croppedlogo.ico" --splash="C:\Users\kbubn\OneDrive\Desktop\IPI\code\loading.png" C:\Users\kbubn\OneD
-# rive\Desktop\IPI\code\flowpro.py
+        import pyi_splash # shows error becasue pyi_splash is not yet loaded, still functional
 
 # ---------- Globals ----------
 running = False
@@ -43,7 +40,7 @@ dual_flow = False
 TARGET_MAC_PREFIX = "00:02:01"
 MAX_WORKERS = 50        # number of concurrent ping threads
 BATCH_SIZE = 200        # how many IPs to schedule before checking ARP table
-OVERALL_TIMEOUT = 20.0  # seconds to give up scanning the whole subnet
+OVERALL_TIMEOUT = 35  # seconds to give up scanning the whole subnet
 PING_TIMEOUT_MS = 700   # per-ping timeout in milliseconds (Windows uses ms)
 PORT1_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[1]/iolinkdevice/pdin/getdata"}
 PORT2_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkdevice/pdin/getdata"}
@@ -156,6 +153,7 @@ def threaded_find_master(subnet=SUBNET, max_workers=MAX_WORKERS, # main function
             if found_event.is_set(): # if the ip is found, exit the scan
                 break
             if time.time() - start_time > overall_timeout: # if timeout is reached, terminate all threads and exit the scan
+                messagebox.showerror("Timeout reached", "Connection timeout occurred, ensure proper connection to IPI Flow Skid")
                 break
 
             futures.append(exe.submit(ping_and_check, ip))
@@ -186,10 +184,10 @@ def threaded_find_master(subnet=SUBNET, max_workers=MAX_WORKERS, # main function
         print(f"MAC: {found_result['mac']}")
         return found_result["ip"]
     else:
-        print("\n----- Unable to find any IFM Masters! -----")
+        print("\n----- Unable to locate IPI flow skid! -----")
         return None
     
-def threaded_find_master_all_interfaces():
+def threaded_find_master_all_interfaces(): # get all active subnets on each interface, allows for ethernet connectiviity
     subnets = get_active_subnets()
     print("Detected subnets:", subnets)
 
@@ -230,7 +228,7 @@ def decodeFlowIFM(raw_hex): # decode raw hex data from IFM flow meter
     return [L_min, G_min]
 
 # ---------- Pyinstaller Pathing -----------
-def resource_path(relative_path):
+def resource_path(relative_path): # join os paths to base paths for accessing files
     if hasattr(sys, 'frozen'):
         base_path = sys._MEIPASS
     else:
@@ -238,7 +236,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 # ---------- Settings GUI -----------
-def combinedWindow():
+def combinedWindow(): # Creates the combined settings/port overview screen
     global BASE_DIR, url
 
     # ------------------- Device Detection -------------------
@@ -839,4 +837,4 @@ if __name__ == "__main__": # on application enter:
         live_plot()
     else:
         session = None
-        messagebox.showerror("Error: Failed to Connect", "Unable to locate IP Flow Skid. Ensure you are connected to the provided router (IPI DFM)")
+        messagebox.showerror("Error: Failed to Connect", "Unable to locate IPI Flow Skid. Ensure you are connected to the provided router (IPI DFM)")
