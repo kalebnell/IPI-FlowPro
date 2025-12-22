@@ -92,10 +92,10 @@
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\DLLs\\tk86t.dll',
    'BINARY'),
+  ('VCRUNTIME140.dll', 'C:\\windows\\system32\\VCRUNTIME140.dll', 'BINARY'),
   ('zlib1.dll',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\DLLs\\zlib1.dll',
-   'BINARY'),
-  ('VCRUNTIME140.dll', 'C:\\windows\\system32\\VCRUNTIME140.dll', 'BINARY')],
+   'BINARY')],
  'C:\\Program '
  'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\DLLs\\_tkinter.pyd')
