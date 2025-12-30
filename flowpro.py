@@ -1,9 +1,7 @@
-print("Running Python Script")
 import requests
 import threading
 import ipaddress
 import matplotlib
-matplotlib.use("tkagg")
 import matplotlib.pyplot as plt
 from openpyxl.styles import Alignment
 from matplotlib.widgets import Button
@@ -26,6 +24,8 @@ from requests_toolbelt.adapters.source import SourceAddressAdapter
 if getattr(sys, 'frozen', False):
     with suppress(ModuleNotFoundError):
         import pyi_splash # shows error becasue pyi_splash is not yet loaded, still functional
+
+#pyinstaller: python -m PyInstaller  --onedir --icon=images/croppedlogo.ico --splash=images/Loading.png --add-data "images;images" flowpro.py
 
 # ---------- Globals ----------
 running = False
