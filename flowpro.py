@@ -1,6 +1,9 @@
+print("Running Python Script")
 import requests
 import threading
 import ipaddress
+import matplotlib
+matplotlib.use("tkagg")
 import matplotlib.pyplot as plt
 from openpyxl.styles import Alignment
 from matplotlib.widgets import Button
@@ -27,6 +30,7 @@ if getattr(sys, 'frozen', False):
 # ---------- Globals ----------
 running = False
 start_time = None
+settings = None
 url = ""
 current_interval = 10
 selected_interval = None
@@ -236,7 +240,7 @@ def resource_path(relative_path): # join os paths to base paths for accessing fi
     return os.path.join(base_path, relative_path)
 
 # ---------- Settings GUI -----------
-def combinedWindow(): # Creates the combined settings/port overview screen
+def combinedWindow():  # Creates the combined settings/port overview screen
     global BASE_DIR, url
 
     # ------------------- Device Detection -------------------
@@ -329,13 +333,11 @@ def combinedWindow(): # Creates the combined settings/port overview screen
     # Main container
     main_frame = ttk.Frame(root)
     main_frame.pack(fill="both", expand=True)
-    main_frame.grid_columnconfigure(0, weight=0)  # Left column 50%
-    main_frame.grid_columnconfigure(1, weight=1)  # Right column 50%
+    main_frame.grid_columnconfigure(1, weight=1)
     main_frame.grid_rowconfigure(0, weight=1)
 
-
     # ------------------- Left Panel (Settings) -------------------
-    leftFrame = ttk.Frame(main_frame,relief="solid", padding=10)
+    leftFrame = ttk.Frame(main_frame, relief="solid", padding=10)
     leftFrame.grid(row=0, column=0, sticky="nsew", padx=10, pady=5)
 
     # ------------------- Right Panel (Ports) -------------------
@@ -444,7 +446,7 @@ def combinedWindow(): # Creates the combined settings/port overview screen
         root.destroy()
 
     ttk.Button(leftFrame, text="Submit", command=submit, style='Big.TButton').grid(row=9, column=1, pady=10)
-    
+
     picture = tk.Canvas(leftFrame, bg="white", width=90, height=90)
     picture.grid(row=9, column=0, sticky="sw", pady=10)
     try:
@@ -457,6 +459,30 @@ def combinedWindow(): # Creates the combined settings/port overview screen
     except Exception as e:
         print(f"Error loading image: {e}")
 
+    # ------------------- Info Icons (Simplified "i") -------------------
+    info_texts = [
+        "Select the pressure unit to display during the test. Supported pressure units are psi, bar, and kPa. NOTE: The selected unit in FlowPRO is independent of the displayed unit on the pressure sensor. Both readouts are displayed correctly in their respective units.",
+        "Select the flow unit to display during the test. Supported flow units are L/min and GPM. NOTE: The selected unit in FlowPRO is independent of the displayed units on the flow meter. Both readouts are displayed correctly in their respective units.",
+        "Select either “Show latest points” or “Show all points”. Showing the latest points will display the last 300 data points collected and scroll with incoming data (preferable for more granular data visibility). Show all points will display all collected data points and compress with incoming data (preferable for large scale data visibility).",
+        "Select how often a sample is taken. Supported sample intervals are 0.5, 1, 5, 10, 30, and 60 seconds.",
+        "Select the pressure minimum for the test (pressure y-axis minimum). Default value: 0. This value will scale automatically if incoming data exceeds the threshold. ",
+        "Select the pressure maximum for the test (pressure y-axis maximum). Default value: 50. This value will scale automatically if incoming data exceeds the threshold. ",
+        "Select the flow rate minimum for the test (flow rate y-axis minimum). Default value: 0. This value will scale automatically if incoming data exceeds the threshold. ",
+        "Select the flow rate maximum for the test (flow rate y-axis maximum). Default value: 10. This value will scale automatically if incoming data exceeds the threshold. ",
+        "Choose a test name. This test name will be the default file name for the saved Excel data file."
+    ]
+
+    info_frame = ttk.Frame(leftFrame)
+    info_frame.grid(row=0, column=2, rowspan=10, sticky="n", padx=(5,0))
+
+    icon_labels = []
+    for i, text in enumerate(info_texts):
+        lbl = tk.Label(info_frame, text="?", font=("Arial", 15, "bold"),
+                       fg="blue", cursor="hand2")
+        lbl.grid(row=i, column=0, pady=7, sticky="w")
+        lbl.bind("<Button-1>", lambda e, t=text: tk.messagebox.showinfo("Info", t))
+        icon_labels.append(lbl)
+
     # ------------------- Port Overview -------------------
     for r in range(2):
         rightFrame.grid_rowconfigure(r, weight=1)
@@ -468,19 +494,16 @@ def combinedWindow(): # Creates the combined settings/port overview screen
         r = i // 2
         c = i % 2
         pf = createPortFrame(rightFrame, t)
-        pf.grid(row=r, column=c, padx=10, pady=10, sticky="nsew", )  # tight 2x2 grid
+        pf.grid(row=r, column=c, padx=10, pady=10, sticky="nsew")
 
-    root.mainloop()
+    root.wait_window()
     return results
         
 
 # ---------- Plotting ----------
 def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting, and saving the recorded data
     global running, current_interval, selected_interval, burst_mode, dual_flow
-    global next_time, testnameheader, starttimeheader, pressureIDheader, flowIDheader
-
-    settings = combinedWindow()
-
+    global next_time, testnameheader, starttimeheader, pressureIDheader, flowIDheader, settings
     global port1, port2, port3, port4 # because ports are assigned in combinedWindow()
 
     ports = [port1, port2, port3, port4]
@@ -493,8 +516,10 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     plt.ion()
     
-    if len(settings) == 0:
-        messagebox.showwarning("No Filename","Please retry and submit a filename.")
+    if not settings:
+        return
+    if not settings.get('filename'):
+        messagebox.showwarning("No Filename","Please retry and submit a file name.")
         return
     
     p_unit = settings.get('pressure_unit')
@@ -528,9 +553,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     current_interval = selected_interval
 
     filename = str(settings.get('filename'))
-
-    root = tk.Tk()
-    root.withdraw()
 
     starttime = datetime.now()
 
@@ -580,14 +602,18 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     ax_start = plt.axes([0.71, 0.75, 0.1, 0.075])
     ax_stop  = plt.axes([0.82, 0.75, 0.1, 0.075])
+    ax_burst = plt.axes([0.765, 0.1, 0.1, 0.075])
+    ax_burst_info = plt.axes([0.875, 0.112, 0.025, 0.05])
+
     btn_start = Button(ax_start, "Start")
     btn_stop  = Button(ax_stop, "Stop")
-    ax_burst = plt.axes([0.765, 0.1, 0.1, 0.075])
     btn_burst = Button(ax_burst, "Burst")
+    btn_burst_info = Button(ax_burst_info, "?")
 
-    for btn in (btn_burst, btn_start, btn_stop):
+    for btn in (btn_burst, btn_start, btn_stop, btn_burst_info):
         btn.label.set_fontsize(16)
         btn.label.set_fontweight("bold")
+    btn_burst_info.label.set_color("blue")
 
     def start(event):
         global running
@@ -628,9 +654,13 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             burst_text.set_color("red")
             plt.draw()
 
+    def burstInfo(event):
+        messagebox.showinfo("Burst Mode Info", "This button will toggle burst mode on and off. Burst mode, when enabled, will lower the sample interval to 0.1 seconds. This allows the user to achieve higher granularity in critical stretches of the test. Burst mode can be toggled on and off while stopped or while testing.")
+
     btn_start.on_clicked(start)
     btn_stop.on_clicked(stop)
     btn_burst.on_clicked(toggleBurst)
+    btn_burst_info.on_clicked(burstInfo)
 
     next_time = time.time()
     first_sample = True
@@ -679,9 +709,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         initialfile = filename,
         title = "Save Excel File As..."
     )
-    root.destroy()
     if not file_path:
-        messagebox.showerror("Error: No designated file location, please retry", "File path required")
+        messagebox.showerror("File path required", "Error: No designated file location, please retry")
         return
     
     csv_path = file_path.replace(".xlsx", "_temp.csv")
@@ -693,7 +722,10 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     # --- Main loop ---
     x_data, p_data, f_data, f_data2 = [], [], [], []
-    while plt.fignum_exists(fig.number):
+    plt.show(block=False)
+    while True:
+        if not plt.fignum_exists(fig.number):
+            break
         now = time.time()
         if running and now >= next_time:
             try:
@@ -798,7 +830,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 print(f"An error occurred: {e}")
         plt.pause(0.01)
     plt.ioff()
-    plt.show()
 
     df = pd.read_csv(csv_path)
     with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
@@ -834,7 +865,10 @@ if __name__ == "__main__": # on application enter:
     if master_ip:
         session = create_bound_session(local_ip)
         url = f"http://{master_ip}/iolinkmaster"
-        live_plot()
+        settings = combinedWindow()
+        if settings:
+            live_plot()
+
     else:
         session = None
         messagebox.showerror("Error: Failed to Connect", "Unable to locate IPI Flow Skid. Ensure you are connected to the provided router (IPI DFM)")
