@@ -55,13 +55,13 @@ SUBNET = "192.168.1.0/24"
 
 # ---------- Detecting IP ----------
 
-def create_bound_session(source_ip):
+def create_bound_session(source_ip): # use session instead of requests to support ethernet usage
     s = requests.session()
     s.mount("http://", SourceAddressAdapter(source_ip))
     s.mount("https://", SourceAddressAdapter(source_ip))
     return s
 
-def get_active_subnets():
+def get_active_subnets(): # return current ip and mask of all active subnets
     output = subprocess.check_output("ipconfig", shell=True, text=True)
     results = []
 
@@ -88,7 +88,7 @@ def get_active_subnets():
 
     return results
 
-def build_ip_list(subnet): # return a list of each ip to ping in the subnet
+def build_ip_list(subnet): # return a list of each ip to ping in the given subnet
     net = ipaddress.ip_network(subnet, strict=False)
     return [str(h) for h in net.hosts()]
 
@@ -244,7 +244,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     global BASE_DIR, url
 
     # ------------------- Device Detection -------------------
-    def findDevice(portNum):
+    def findDevice(portNum): # id device by IoT deviceID
         deviceIDs = {
             2015: ["Keyence FD-H10 Flow Meter", "f","images/key_flow_img.jpg"],
             1463: ["SU8021 IFM Flow Meter", "f","images/ifm_flow_img.jpg"],
@@ -267,7 +267,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     MAX_IMAGE_SIZE = 135
 
     # ------------------- Port Frame Builder -------------------
-    def createPortFrame(parent, title):
+    def createPortFrame(parent, title): # create a frame to display a titled port's info
         global port1, port2, port3, port4
 
         frame = ttk.Frame(parent, padding=10, relief="ridge")
@@ -297,7 +297,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             port4 = device
         img_file = device[2] if device else "images/empty.jpg"
 
-        def resize_image(event=None):
+        def resize_image(event=None): # resize port display image
             try:
                 img = Image.open(resource_path(img_file))
                 img = img.resize((MAX_IMAGE_SIZE, MAX_IMAGE_SIZE))
@@ -349,12 +349,12 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     placeholder = "Auto Scale"
     results = {}
 
-    def menuOpened(entry):
+    def menuOpened(entry): # Auto Scale functionality
         if entry.get() == placeholder:
             entry.delete(0, tk.END)
             entry.config(fg="black")
 
-    def menuClosed(entry):
+    def menuClosed(entry):# Auto Scale functionality
         if entry.get() == "":
             entry.insert(0, placeholder)
             entry.config(fg="grey")
@@ -388,7 +388,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     interval_values = ["0.5 Seconds","1 Second ","5 Seconds","10 Seconds","30 Seconds","60 Seconds"]
     interval_var = tk.StringVar(value=interval_values[3])
 
-    def pick_sample_interval():
+    def pick_sample_interval(): # create sample interval selection window
         popup = tk.Toplevel(root)
         popup.title("Select Sample Interval")
         popup.grab_set()
@@ -538,7 +538,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         f_unit_index = 1
         f_unit = "g/m"
 
-    def safe_number(n, default):
+    def safe_number(n, default): # returns a default value if non-numeric
         try:
             return float(n)
         except:
@@ -615,7 +615,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         btn.label.set_fontweight("bold")
     btn_burst_info.label.set_color("blue")
 
-    def start(event):
+    def start(event): # what to do on start click
         global running
         running = True
         global start_time
@@ -626,7 +626,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         status_text.set_fontsize(20)
         plt.draw()
 
-    def stop(event):
+    def stop(event): # what to do on stop click
         global running
         running = False
         status_text.set_text("Stopped: Safe to Exit")
@@ -634,7 +634,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         status_text.set_color("red")
         plt.draw()
 
-    def toggleBurst(event):
+    def toggleBurst(event): # what to do on burst click (toggles)
         global selected_interval
         global current_interval
         global burst_mode
@@ -654,7 +654,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             burst_text.set_color("red")
             plt.draw()
 
-    def burstInfo(event):
+    def burstInfo(event): # display burst mode info
         messagebox.showinfo("Burst Mode Info", "This button will toggle burst mode on and off. Burst mode, when enabled, will lower the sample interval to 0.1 seconds. This allows the user to achieve higher granularity in critical stretches of the test. Burst mode can be toggled on and off while stopped or while testing.")
 
     btn_start.on_clicked(start)
