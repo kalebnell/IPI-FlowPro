@@ -1,10 +1,10 @@
 import requests
 import threading
 import ipaddress
-import matplotlib
 import matplotlib.pyplot as plt
 from openpyxl.styles import Alignment
 from matplotlib.widgets import Button
+from matplotlib.patches import Rectangle
 from datetime import datetime
 import pandas as pd
 import time
@@ -25,7 +25,7 @@ if getattr(sys, 'frozen', False):
     with suppress(ModuleNotFoundError):
         import pyi_splash # shows error becasue pyi_splash is not yet loaded, still functional
 
-#pyinstaller: python -m PyInstaller  --onedir --icon=images/croppedlogo.ico --splash=images/Loading.png --add-data "images;images" flowpro.py
+#pyinstaller: python -m PyInstaller --noconsole --onedir --icon=images/croppedlogo.ico --splash=images/Loading.png --add-data "images;images" flowpro.py
 
 # ---------- Globals ----------
 running = False
@@ -385,12 +385,12 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     graph_format.config(width=20)
 
     # Sample Interval
-    interval_values = ["0.5 Seconds","1 Second ","5 Seconds","10 Seconds","30 Seconds","60 Seconds"]
-    interval_var = tk.StringVar(value=interval_values[3])
+    sample_rate_values = ["0.5 Seconds","1 Second ","5 Seconds","10 Seconds","30 Seconds","60 Seconds"]
+    sample_rate_var = tk.StringVar(value=sample_rate_values[3])
 
     def pick_sample_interval(): # create sample interval selection window
         popup = tk.Toplevel(root)
-        popup.title("Select Sample Interval")
+        popup.title("Select Sample Rate")
         popup.grab_set()
         frame = ttk.Frame(popup)
         frame.pack(padx=5, pady=10)
@@ -399,16 +399,16 @@ def combinedWindow():  # Creates the combined settings/port overview screen
         listbox.config(yscrollcommand=scrollbar.set)
         listbox.pack(side="left", fill="y")
         scrollbar.pack(side="right", fill="y")
-        for v in interval_values:
+        for v in sample_rate_values:
             listbox.insert("end", v)
         def choose(event=None):
             selection = listbox.get(listbox.curselection())
-            interval_var.set(selection)
+            sample_rate_var.set(selection)
             popup.destroy()
         listbox.bind("<<ListboxSelect>>", choose)
 
-    ttk.Label(leftFrame, text="Sample Interval (s)").grid(row=3, column=0, pady=pady_val, sticky="w")
-    ttk.Button(leftFrame, textvariable=interval_var, command=pick_sample_interval, style='Big.TButton').grid(
+    ttk.Label(leftFrame, text="Sample Rate (s)").grid(row=3, column=0, pady=pady_val, sticky="w")
+    ttk.Button(leftFrame, textvariable=sample_rate_var, command=pick_sample_interval, style='Big.TButton').grid(
         row=3, column=1, pady=pady_val, sticky="ew", ipady=ipady_val)
 
     # Numeric fields
@@ -442,7 +442,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
         results['flow_min'] = flow_min.get() if flow_min.get() != placeholder else None
         results['flow_max'] = flow_max.get() if flow_max.get() != placeholder else None
         results['filename'] = filename.get()
-        results['interval'] = interval_var.get()[:-8]
+        results['interval'] = sample_rate_var.get()[:-8]
         root.destroy()
 
     ttk.Button(leftFrame, text="Submit", command=submit, style='Big.TButton').grid(row=9, column=1, pady=10)
@@ -506,6 +506,11 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     global next_time, testnameheader, starttimeheader, pressureIDheader, flowIDheader, settings
     global port1, port2, port3, port4 # because ports are assigned in combinedWindow()
 
+    ipiblue = "#5778A5"
+    ipigold = "#F2B700"
+    darkblue = "#003466"
+    packerblue = "#0865CA"
+    gray = "#EAEBED"
     ports = [port1, port2, port3, port4]
     flownum = 0
     for port in ports:
@@ -564,10 +569,10 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     # --- Main plot on left ---
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = ax1.twinx()
-    ax1.set_xlabel(x_unit)
-    ax1.set_ylabel("Pressure ("+str(p_unit)+")", color="tab:blue", fontsize = 20)
-    ax2.set_ylabel("Flow ("+str(f_unit)+")", color="tab:orange", fontsize=20)
-    ax1.set_title("Live Plot of Readings", fontsize = 20)
+    ax1.set_xlabel(x_unit, color=darkblue, fontsize = 20)
+    ax1.set_ylabel("Pressure ("+str(p_unit)+")", color=darkblue, fontsize = 20)
+    ax2.set_ylabel("Flow ("+str(f_unit)+")", color=darkblue, fontsize=20)
+    ax1.set_title("FlowPRO Live Plot", fontsize = 20, color=darkblue, fontweight='bold')
 
     ax1.grid(True, which="both", linestyle="--",linewidth=0.4, alpha=0.5)
 
@@ -584,36 +589,68 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     # Add titles and text objects
     if dual_flow:
-        ax_readout.text(0.5, 0.75, "High Flow (FD-H20)", fontsize=15, ha='center')
-        flow_text = ax_readout.text(0.5, 0.67, "0.0", fontsize=25, ha='center', color='orange')
-        ax_readout.text(0.5, 0.55, "Low Flow (FD-H10)", fontsize=15, ha='center')
-        flow_text2 = ax_readout.text(0.5, 0.47, "0.0", fontsize=25, ha='center', color='green')
-        ax_readout.text(0.5, 0.35, "Current Pressure", fontsize=15, ha='center')
-        pressure_text = ax_readout.text(0.5, 0.27, "0.0", fontsize=25, ha='center', color='blue')
+        ax_readout.text(0.5, 0.68, "High Flow (FD-H20)", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        flow_text = ax_readout.text(0.5, 0.6, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='white', bbox=dict(facecolor=packerblue))
+        ax_readout.text(0.5, 0.51, "Low Flow (FD-H10)", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        flow_text2 = ax_readout.text(0.5, 0.43, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='white', bbox=dict(facecolor=packerblue))
+        ax_readout.text(0.5, 0.34, "Current Pressure", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        pressure_text = ax_readout.text(0.5, 0.26, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='white', bbox=dict(facecolor=packerblue))
     else:
-        ax_readout.text(0.5, 0.65, "Current Flow", fontsize=15, ha='center')
-        flow_text = ax_readout.text(0.5, 0.55, "0.0", fontsize=25, ha='center', color='orange')
-        ax_readout.text(0.5, 0.43, "Current Pressure", fontsize=15, ha='center')
-        pressure_text = ax_readout.text(0.5, 0.33, "0.0", fontsize=25, ha='center', color='blue')
-    status_text = ax_readout.text(0.5, 0.97, "Stopped", fontsize = 25, ha='center',color='red', fontweight='bold')
-    burst_text = ax_readout.text(0.5, 0.125, "Burst mode: Off", fontsize =15, ha='center',color='red')
+        ax_readout.text(0.5, 0.70, "Current Flow", fontsize=15, ha='center')
+        flow_text = ax_readout.text(0.5, 0.60, "0.0", fontsize=25, ha='center', color='orange')
+        ax_readout.text(0.5, 0.50, "Current Pressure", fontsize=15, ha='center')
+        pressure_text = ax_readout.text(0.5, 0.40, "0.0", fontsize=25, ha='center', color='blue')
+        
+    ax_readout.text(0, 0, "Sample Rate", fontsize=10, ha='center')
+    sample_rate_text = ax_readout.text(0, -0.05, str(current_interval)+"(s)", fontsize=15, ha='center', color='darkblue')
+    status_text = ax_readout.text(0.5, 0.98, "Stopped", fontsize = 20, ha='center',color=darkblue, fontweight='bold')
+    burst_text = ax_readout.text(0.5, 0.1, "Burst mode: Off", fontsize =15, ha='center',color='red')
+
+    # --- Bounding Boxes ---
+    ax_start_stop_box = plt.axes([0.675, 0.7, 0.28, 0.25])
+    ax_start_stop_box.set_axis_off()
+    start_stop_box = Rectangle(
+        (0.05, 0.05), 0.9, 0.9, transform=ax_start_stop_box.transAxes, linewidth=2, edgecolor=darkblue,facecolor='none'
+    )
+    ax_start_stop_box.add_patch(start_stop_box)
+
+    ax_readout_box = plt.axes([0.675, 0.24, 0.28, 0.47])
+    ax_readout_box.set_axis_off()
+    readout_box = Rectangle(
+        (0.05, 0.05), 0.9, 0.9, transform=ax_readout_box.transAxes, linewidth=2, edgecolor=darkblue,facecolor='none'
+    )
+    ax_readout_box.add_patch(readout_box)
+
+    ax_burst_box = plt.axes([0.675, 0, 0.28, 0.25])
+    ax_burst_box.set_axis_off()
+    burst_box = Rectangle(
+        (0.05, 0.05), 0.9, 0.9, transform=ax_burst_box.transAxes, linewidth=2, edgecolor=darkblue, facecolor='none'
+    )
+    ax_burst_box.add_patch(burst_box)
 
     # --- Buttons ---
 
     ax_start = plt.axes([0.71, 0.75, 0.1, 0.075])
-    ax_stop  = plt.axes([0.82, 0.75, 0.1, 0.075])
-    ax_burst = plt.axes([0.765, 0.1, 0.1, 0.075])
-    ax_burst_info = plt.axes([0.875, 0.112, 0.025, 0.05])
+    btn_start = Button(ax_start, "Start", color=ipiblue, hovercolor=darkblue)
+    btn_start.label.set_color(ipigold)
 
-    btn_start = Button(ax_start, "Start")
-    btn_stop  = Button(ax_stop, "Stop")
-    btn_burst = Button(ax_burst, "Burst")
+    ax_stop  = plt.axes([0.82, 0.75, 0.1, 0.075])
+    btn_stop  = Button(ax_stop, "Stop", color=ipiblue, hovercolor=darkblue)
+    btn_stop.label.set_color(gray)
+
+    ax_burst = plt.axes([0.765, 0.1, 0.1, 0.075])
+    btn_burst = Button(ax_burst, "Burst", color=ipiblue, hovercolor=darkblue)
+    btn_burst.label.set_color(ipigold)
+
+    ax_burst_info = plt.axes([0.875, 0.112, 0.025, 0.05])
     btn_burst_info = Button(ax_burst_info, "?")
+    btn_burst_info.label.set_color("blue")
 
     for btn in (btn_burst, btn_start, btn_stop, btn_burst_info):
         btn.label.set_fontsize(16)
         btn.label.set_fontweight("bold")
-    btn_burst_info.label.set_color("blue")
+
+    # --- Button click Events ---
 
     def start(event): # what to do on start click
         global running
@@ -622,7 +659,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         if(start_time == None):
             start_time = time.time()
         status_text.set_text("Running")
-        status_text.set_color("green")
+        status_text.set_color(packerblue)
         status_text.set_fontsize(20)
         plt.draw()
 
@@ -630,8 +667,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         global running
         running = False
         status_text.set_text("Stopped: Safe to Exit")
-        status_text.set_fontsize(15)
-        status_text.set_color("red")
+        status_text.set_fontsize(18)
+        status_text.set_color(darkblue)
         plt.draw()
 
     def toggleBurst(event): # what to do on burst click (toggles)
@@ -644,6 +681,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             next_time = time.time()
             current_interval = 0.1
             burst_mode = True
+            sample_rate_text.set_text("0.1(s)")
             burst_text.set_text("Burst mode: On")
             burst_text.set_color("green")
             plt.draw()
@@ -652,10 +690,13 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             burst_mode = False
             burst_text.set_text("Burst mode: Off")
             burst_text.set_color("red")
+            sample_rate_text.set_text(str(current_interval)+"(s)")
             plt.draw()
 
     def burstInfo(event): # display burst mode info
-        messagebox.showinfo("Burst Mode Info", "This button will toggle burst mode on and off. Burst mode, when enabled, will lower the sample interval to 0.1 seconds. This allows the user to achieve higher granularity in critical stretches of the test. Burst mode can be toggled on and off while stopped or while testing.")
+        global running
+        if not running:
+            messagebox.showinfo("Burst Mode Info", "This button will toggle burst mode on and off. Burst mode, when enabled, will lower the sample interval to 0.1 seconds. This allows the user to achieve higher granularity in critical stretches of the test. Burst mode can be toggled on and off while stopped or while testing.")
 
     btn_start.on_clicked(start)
     btn_stop.on_clicked(stop)
@@ -692,9 +733,9 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     flow_sensor1 = port[0]
                     live_ports['f'] = i
 
-    #pressureIDheader = ["Pressure Sensor ID", "TEMP"] ########################################################################
+    pressureIDheader = ["Pressure Sensor ID", "TEMP"] ########################################################################
     try:
-        pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
+        #pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
         if dual_flow:
             flowIDheader1 = ["High Flow ID", flow_sensor1]
             flowIDheader2 = ["Low Flow ID", flow_sensor2]
@@ -747,7 +788,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                         if slot == 'f':
                             f = decodeFlowKey(raw_hex)[f_unit_index]
                             if f < -1000 and len(f_data)>2: f=f_data[-1]
-                #p=0#########################
+                p=0#########################
                 t = datetime.now()
                 if first_sample:
                     et = 0.0
