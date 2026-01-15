@@ -1,6 +1,4 @@
 import requests
-import threading
-import ipaddress
 import matplotlib.pyplot as plt
 from openpyxl.styles import Alignment
 from matplotlib.widgets import Button
@@ -10,17 +8,17 @@ import pandas as pd
 import time
 from matplotlib.gridspec import GridSpec
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 import sys
 import os
 from contextlib import suppress
-import concurrent.futures
-import subprocess
 from PIL import Image, ImageTk
+import subprocess
 import os
 import csv
 import matplotlib.image as mpimg
-from requests_toolbelt.adapters.source import SourceAddressAdapter
+import json
+from pathlib import Path
 
 if getattr(sys, 'frozen', False):
     with suppress(ModuleNotFoundError):
@@ -42,166 +40,59 @@ port2 = None
 port3 = None
 port4 = None
 dual_flow = False
-TARGET_MAC_PREFIX = "00:02:01"
-MAX_WORKERS = 50        # number of concurrent ping threads
-BATCH_SIZE = 200        # how many IPs to schedule before checking ARP table
-OVERALL_TIMEOUT = 35  # seconds to give up scanning the whole subnet
-PING_TIMEOUT_MS = 700   # per-ping timeout in milliseconds (Windows uses ms)
+CACHE_FILE = Path("flowpro_cache.json")
+IFM_MAC_PREFIX = "00:02:01"
 PORT1_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[1]/iolinkdevice/pdin/getdata"}
 PORT2_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkdevice/pdin/getdata"}
 PORT3_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[3]/iolinkdevice/pdin/getdata"}
 PORT4_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SUBNET = "192.168.1.0/24"
 
 # ---------- Detecting IP ----------
+def normalize_mac(mac: str):#
+    return mac.replace(":", "").replace("-","").lower() if mac else None
 
-def create_bound_session(source_ip): # use session instead of requests to support ethernet usage
-    s = requests.session()
-    s.mount("http://", SourceAddressAdapter(source_ip))
-    s.mount("https://", SourceAddressAdapter(source_ip))
-    return s
-
-def get_active_subnets(): # return current ip and mask of all active subnets
-    output = subprocess.check_output("ipconfig", shell=True, text=True)
-    results = []
-
-    current_ip = None
-    current_mask = None
-
-    for line in output.splitlines():
-        line = line.strip()
-
-        if line.startswith("IPv4 Address"):
-            current_ip = line.split(":")[-1].strip()
-        elif line.startswith("Subnet Mask"):
-            current_mask = line.split(":")[-1].strip()
-        if current_ip and current_mask:
-            try:
-                subnet = ipaddress.IPv4Network(
-                    f"{current_ip}/{current_mask}", strict=False
-                )
-                results.append((str(subnet), current_ip))
-            except:
-                pass
-            current_ip = None
-            current_mask = None
-
-    return results
-
-def build_ip_list(subnet): # return a list of each ip to ping in the given subnet
-    net = ipaddress.ip_network(subnet, strict=False)
-    return [str(h) for h in net.hosts()]
-
-
-def ping_ip(ip, timeout_ms=PING_TIMEOUT_MS): # ping a given ip 
-    cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
+def check_ip_for_ifm(ip, target_prefix=IFM_MAC_PREFIX):#
+    """
+    Check if the given IP is an IFM device by scanning the ARP table.
+    Returns (ip, mac) if found, else None.
+    """
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
-        return proc.returncode == 0
-    except subprocess.TimeoutExpired:
-        return False
+        # ping the IP first to populate ARP
+        subprocess.run(["ping", "-n", "1", "-w", "500", ip],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception:
-        return False
+        pass
 
-
-def get_master_from_arp(prefix=TARGET_MAC_PREFIX): # check the arp list to see if master has been found
+    # get ARP table
     try:
-        arp_out = subprocess.check_output("arp -a", shell=True, text=True, stderr=subprocess.DEVNULL)
+        arp_out = subprocess.check_output("arp -a", shell=True, text=True)
     except Exception:
-        return None, None
+        return None
 
-    norm_prefix = prefix.lower().replace(":", "").replace("-", "")
+    norm_prefix = target_prefix.lower().replace(":", "").replace("-", "")
     for line in arp_out.splitlines():
         cleaned = line.replace("-", "").replace(":", "").lower()
         if norm_prefix in cleaned:
             parts = line.split()
-            if len(parts) >= 2:
-                ip = None
-                mac = None
-                for token in parts:
-                    if token.count(".") == 3 and ip is None:
-                        ip = token.strip("()")
-                    if (":" in token or "-" in token) and any(c.isalpha() for c in token):
-                        mac = token
-                if ip and mac:
-                    return ip, mac
-    return None, None
+            ip_found = None
+            mac_found = None
+            for token in parts:
+                if token.count(".") == 3 and ip_found is None:
+                    ip_found = token.strip("()")
+                if (":" in token or "-" in token) and any(c.isalpha() for c in token):
+                    mac_found = token
+            if ip_found and mac_found:
+                return ip_found, normalize_mac(mac_found)
 
+    return None
 
-def threaded_find_master(subnet=SUBNET, max_workers=MAX_WORKERS, # main function for finding IFM master's ip.
-                         batch_size=BATCH_SIZE, overall_timeout=OVERALL_TIMEOUT): # pings each known subnet's ips to add to arp list, then checks arp list for master
-    
-    ip_list = build_ip_list(subnet)
-    total = len(ip_list)
-    print(f"Scanning {total} addresses on {subnet} using up to {max_workers} workers...")
-
-    start_time = time.time()
-    found_event = threading.Event()
-    found_result = {"ip": None, "mac": None}
-
-    def ping_and_check(ip): # ping the passed ip and check if it matches required mac header.
-        if found_event.is_set():
-            return False
-        ping_ip(ip)
-        ip_found, mac_found = get_master_from_arp()
-        if ip_found:
-            found_result["ip"] = ip_found
-            found_result["mac"] = mac_found
-            found_event.set()
-            return True
-        return False
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as exe: # handling threading to ping ips quicker.
-        futures = []
-        for i, ip in enumerate(ip_list):
-            if found_event.is_set(): # if the ip is found, exit the scan
-                break
-            if time.time() - start_time > overall_timeout: # if timeout is reached, terminate all threads and exit the scan
-                messagebox.showerror("Timeout reached", "Connection timeout occurred, ensure proper connection to IPI Flow Skid")
-                break
-
-            futures.append(exe.submit(ping_and_check, ip))
-
-            if (i + 1) % batch_size == 0:
-                time.sleep(0.2)
-                ip_found, mac_found = get_master_from_arp()
-                if ip_found:
-                    found_result["ip"] = ip_found
-                    found_result["mac"] = mac_found
-                    found_event.set()
-                    break
-
-        try:
-            timeout_left = max(0.0, overall_timeout - (time.time() - start_time))
-            concurrent.futures.wait(futures, timeout=timeout_left)
-        except Exception:
-            pass
-    try:
-        if pyi_splash.is_alive():
-            pyi_splash.close()
-    except Exception as e:
-        pass
-
-    if found_result["ip"]: # if master is found, return its location so POST requests can be sent
-        print("\nMATCH FOUND!")
-        print(f"IP:  {found_result['ip']}")
-        print(f"MAC: {found_result['mac']}")
-        return found_result["ip"]
-    else:
-        print("\n----- Unable to locate IPI flow skid! -----")
-        return None
-    
-def threaded_find_master_all_interfaces(): # get all active subnets on each interface, allows for ethernet connectiviity
-    subnets = get_active_subnets()
-    print("Detected subnets:", subnets)
-
-    for subnet, local_ip in subnets:
-        print(f"Scanning {subnet} ...")
-        ip = threaded_find_master(subnet=subnet)
-        if ip:
-            return ip, local_ip
-
+def find_ifm_from_user_ip(user_ip: str):#
+    result = check_ip_for_ifm(user_ip)
+    if result:
+        master_ip, mac = result
+        return master_ip, mac
     return None, None
 
 # ---------- Decoders ----------
@@ -243,6 +134,90 @@ def resource_path(relative_path): # join os paths to base paths for accessing fi
     else:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def askForIP(session):
+
+    def saveIP(ip: str):
+        data = {"last_ip":ip}
+        with open(CACHE_FILE, "w") as f:
+            json.dump(data, f)
+
+    def loadIP()-> str:
+        if CACHE_FILE.exists():
+            with open(CACHE_FILE, "r") as f:
+                data = json.load(f)
+                return data.get("last_ip")
+        return None
+
+    s = session
+    results = {}
+    entry_font = ("Arial", 14)
+    root = tk.Tk()
+    root.attributes('-topmost', True)
+    root.after(300, lambda: root.attributes('-topmost', False))
+    root.focus_force()
+    root.title("FlowPRO")
+    WINDOW_WIDTH = 500
+    WINDOW_HEIGHT = 300
+    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+    root.resizable(False, False)
+
+    title_label = tk.Label(root, text="Direct Connect to Flow Skid", font=("Arial", 20, "bold"), fg="blue")
+    title_label.pack(pady=10)
+
+    main_frame = ttk.Frame(root, relief='solid')
+    main_frame.pack(fill="both", expand=True,pady=10,padx=10)
+
+    header = ttk.Label(main_frame, text="Please enter the IP displayed on the router inside the weatherproof box on your flow skid.",
+                       font=("Arial",14), wraplength=400, justify='center')
+    header.pack(expand=True, pady=10, padx=20)
+
+    status_var = tk.StringVar(value="Enter an IP address to test connection")
+    status_label = tk.Label(main_frame, textvariable=status_var, font=("Arial", 12),
+                            relief="solid", padx=5, pady=5, justify="center",fg="blue")
+    status_label.pack(padx=80, pady=10)
+
+    ip = tk.Entry(main_frame, font=entry_font)
+    ip.config(width=20)
+    ip.config(selectborderwidth=3, width=20,justify='center')
+    ip.pack(pady=10)
+    ip.focus_set()
+    cached_ip = loadIP()
+    if cached_ip:
+        ip.insert(0, cached_ip)
+
+    def testIP(testip):
+        url = f"http://{testip}/iolinkmaster"
+        print("URL: "+url)
+        try:
+            response = s.post(url, json=PORT1_PAYLOAD, timeout=2)
+            if response:
+                return True
+        except:
+            status_var.set("Connection failed, please retry")
+
+    def submit():
+        current = ip.get()
+        ip.delete(0, tk.END)
+        ip.insert(0,"Working...")
+        submit_button.config(state="disabled")
+        testip = "".join(current.split())
+        root.update_idletasks()
+        if testIP(testip):
+            results['ip'] = testip
+            saveIP(testip)
+            root.destroy()
+        else:
+            submit_button.config(state="normal")
+            ip.delete(0, tk.END)
+            ip.insert(0,current)
+    
+    style = ttk.Style()
+    style.configure("Big.TButton",font=("Arial",14,"bold"))
+    submit_button = ttk.Button(main_frame, text="Submit", command=submit, style='Big.TButton')
+    submit_button.pack(pady=10, ipadx=5, ipady=5)
+    root.wait_window()
+    return results
 
 # ---------- Settings GUI -----------
 def combinedWindow():  # Creates the combined settings/port overview screen
@@ -598,7 +573,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     ax_readout.axis("off")
 
     # --- Logo ---
-    img = mpimg.imread("images/logo.png")
+    img = mpimg.imread(resource_path("images/logo.png"))
     newax = fig.add_axes([0, 0.82, 0.18, 0.18], anchor='NW')
     newax.imshow(img)
     newax.axis('off')
@@ -813,7 +788,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                         if slot == 'f':
                             f = decodeFlowKey(raw_hex)[f_unit_index]
                             if f < -1000 and len(f_data)>2: f=f_data[-1]
-                #p=0#########################
+                p=0#########################
                 t = datetime.now()
                 if first_sample:
                     et = 0.0
@@ -926,15 +901,18 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     messagebox.showinfo("File Saved", f"File saved to:\n{file_path}")
 
     
-if __name__ == "__main__": # on application enter: 
-    master_ip, local_ip = threaded_find_master_all_interfaces()
-    if master_ip:
-        session = create_bound_session(local_ip)
-        url = f"http://{master_ip}/iolinkmaster"
+if __name__ == "__main__": # on application enter:
+
+    try:
+        if pyi_splash.is_alive():
+            pyi_splash.close()
+    except Exception as e:
+        pass
+
+    session = requests.Session() 
+    user_ip = askForIP(session).get("ip")
+    if user_ip:
+        url = f"http://{user_ip}/iolinkmaster"
         settings = combinedWindow()
         if settings:
             live_plot()
-
-    else:
-        session = None
-        messagebox.showerror("Error: Failed to Connect", "Unable to locate IPI Flow Skid. Ensure you are connected to the provided router (IPI DFM)")
