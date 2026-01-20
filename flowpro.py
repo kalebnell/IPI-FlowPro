@@ -40,7 +40,8 @@ port2 = None
 port3 = None
 port4 = None
 dual_flow = False
-CACHE_FILE = Path("flowpro_cache.json")
+CACHE_FILE = Path(os.getenv('LOCALAPPDATA')) / "FlowPRO" / "last_ip.json"
+CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 IFM_MAC_PREFIX = "00:02:01"
 PORT1_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[1]/iolinkdevice/pdin/getdata"}
 PORT2_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkdevice/pdin/getdata"}
@@ -52,50 +53,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def normalize_mac(mac: str):#
     return mac.replace(":", "").replace("-","").lower() if mac else None
 
-def check_ip_for_ifm(ip, target_prefix=IFM_MAC_PREFIX):#
-    """
-    Check if the given IP is an IFM device by scanning the ARP table.
-    Returns (ip, mac) if found, else None.
-    """
-    try:
-        # ping the IP first to populate ARP
-        subprocess.run(["ping", "-n", "1", "-w", "500", ip],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       creationflags=subprocess.CREATE_NO_WINDOW)
-    except Exception:
-        pass
-
-    # get ARP table
-    try:
-        arp_out = subprocess.check_output("arp -a", shell=True, text=True)
-    except Exception:
-        return None
-
-    norm_prefix = target_prefix.lower().replace(":", "").replace("-", "")
-    for line in arp_out.splitlines():
-        cleaned = line.replace("-", "").replace(":", "").lower()
-        if norm_prefix in cleaned:
-            parts = line.split()
-            ip_found = None
-            mac_found = None
-            for token in parts:
-                if token.count(".") == 3 and ip_found is None:
-                    ip_found = token.strip("()")
-                if (":" in token or "-" in token) and any(c.isalpha() for c in token):
-                    mac_found = token
-            if ip_found and mac_found:
-                return ip_found, normalize_mac(mac_found)
-
-    return None
-
-def find_ifm_from_user_ip(user_ip: str):#
-    result = check_ip_for_ifm(user_ip)
-    if result:
-        master_ip, mac = result
-        return master_ip, mac
-    return None, None
-
 # ---------- Decoders ----------
+def decodeHighPressureIFM(raw_hex):
+    bit_len = 4*len(raw_hex)
+    bin_value = format(int(raw_hex,16), f'0{bit_len}b')[2:-2]
+    bar = (float(int(bin_value,2)))
+    psi = bar * 14.5038
+    Kpa = bar * 100
+    return [bar, psi, Kpa]
 
 def decodePressureIFM(raw_hex): # decode raw hex data from IFM pressure sensor PN-7692
     bit_len = 4*len(raw_hex)
@@ -124,8 +89,12 @@ def decodeFlowIFM(raw_hex): # decode raw hex data from IFM flow meter
     return [L_min, G_min]
 
 def decodePressureKey(raw_hex):
-    # TODO
-    return 0
+    bit_len = 4*len(raw_hex)
+    bin_value = format(int(raw_hex,16), f'0{bit_len}b')[:16]
+    psi = float(int(bin_value,2))
+    bar = psi / 14.5038
+    Kpa = bar * 100
+    return [bar, psi, Kpa]
 
 # ---------- Pyinstaller Pathing -----------
 def resource_path(relative_path): # join os paths to base paths for accessing files
@@ -135,7 +104,7 @@ def resource_path(relative_path): # join os paths to base paths for accessing fi
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-def askForIP(session):
+def askForIP(session): # Unused, for direct IP connection support
 
     def saveIP(ip: str):
         data = {"last_ip":ip}
@@ -154,7 +123,6 @@ def askForIP(session):
     entry_font = ("Arial", 14)
     root = tk.Tk()
     root.attributes('-topmost', True)
-    root.after(300, lambda: root.attributes('-topmost', False))
     root.focus_force()
     root.title("FlowPRO")
     WINDOW_WIDTH = 500
@@ -186,23 +154,23 @@ def askForIP(session):
     if cached_ip:
         ip.insert(0, cached_ip)
 
-    def testIP(testip):
+    def testIP(testip): # Unused
         url = f"http://{testip}/iolinkmaster"
-        print("URL: "+url)
         try:
             response = s.post(url, json=PORT1_PAYLOAD, timeout=2)
-            if response:
-                return True
+            return response.status_code == 200
         except:
             status_var.set("Connection failed, please retry")
+            root.update()
+            return False
 
-    def submit():
+    def submit(): # Unused
         current = ip.get()
         ip.delete(0, tk.END)
         ip.insert(0,"Working...")
         submit_button.config(state="disabled")
         testip = "".join(current.split())
-        root.update_idletasks()
+        root.update()
         if testIP(testip):
             results['ip'] = testip
             saveIP(testip)
@@ -211,6 +179,7 @@ def askForIP(session):
             submit_button.config(state="normal")
             ip.delete(0, tk.END)
             ip.insert(0,current)
+            root.update()
     
     style = ttk.Style()
     style.configure("Big.TButton",font=("Arial",14,"bold"))
@@ -231,7 +200,8 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             452:  ["PN7692 IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
             1313: ["EIO344 IFM Moneo Blue|Classic Adapter", None,"images/ifm_moneo_img.jpg"],
             2016: ["Keyence FD-H20 Flow Meter", "f", "images/key_flow_img.jpg"],
-            2008: ["Keyence GP-M400T Pressure Sensor", "p", "images/key_pressure_img.jpg"]
+            2008: ["Keyence GP-M400T Pressure Sensor", "p", "images/key_pressure_img.jpg"],
+            450: ["PN7670 IFM Pressure Sensor", "p", "images/ifm_high_pressure_img.jpg"]
         }
         try:
             payload = {"code":"request","cid":-1,
@@ -242,8 +212,8 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             id_val = json_data.get("data", {}).get("value")
             return deviceIDs.get(id_val)
         except Exception as e:
-            print(f"Port {portNum} detection failed: {e}")
-            return None
+            print("UNCAUGHT ERROR")
+            return
 
     MAX_IMAGE_SIZE = 135
 
@@ -475,6 +445,8 @@ def combinedWindow():  # Creates the combined settings/port overview screen
         r = i // 2
         c = i % 2
         pf = createPortFrame(rightFrame, t)
+        if pf is None:
+            return None
         pf.grid(row=r, column=c, padx=10, pady=10, sticky="nsew")
 
     root.wait_window()
@@ -580,12 +552,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     # Add titles and text objects
     if dual_flow:
-        ax_readout.text(0.5, 0.68, "High Flow (FD-H20)", fontsize=18, ha='center', color=darkblue, fontweight='bold')
-        flow_text = ax_readout.text(0.5, 0.6, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=ipigold, facecolor='none', linewidth=2))
-        ax_readout.text(0.5, 0.51, "Low Flow (FD-H10)", fontsize=18, ha='center', color=darkblue, fontweight='bold')
-        flow_text2 = ax_readout.text(0.5, 0.43, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=darkblue, facecolor='none', linewidth=2))
-        ax_readout.text(0.5, 0.34, "Current Pressure", fontsize=18, ha='center', color=darkblue, fontweight='bold')
-        pressure_text = ax_readout.text(0.5, 0.26, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=ipiblue, facecolor='none', linewidth=2))
+        ax_readout.text(0.13, 0.68, "High Flow", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        flow_text = ax_readout.text(0.13, 0.58, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=ipigold, facecolor='none', linewidth=2))
+        ax_readout.text(0.13, 0.48, "Low Flow", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        flow_text2 = ax_readout.text(0.13, 0.38, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=darkblue, facecolor='none', linewidth=2))
+        ax_readout.text(0.88, 0.58, "Pressure", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        pressure_text = ax_readout.text(0.88, 0.48, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=ipiblue, facecolor='none', linewidth=2))
     else:
         ax_readout.text(0.13, 0.63, "Flow", fontsize=20, ha='center', color=darkblue, fontweight='bold')
         flow_text = ax_readout.text(0.13, 0.53, "0.0", fontsize=25, ha='center', color='black', fontweight='bold')
@@ -721,7 +693,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             if port[1] == 'p':
                 pressure_sensor = port[0]
                 live_ports['p'] = i
-            elif port[0] == "Keyence FD-H10 Flow Meter" or port[0] =="Keyence FD-H20 Flow Meter":
+            elif port[1] == 'f':
                 if dual_flow:
                     if port[0] == "Keyence FD-H20 Flow Meter":
                         flow_sensor1 = port[0]
@@ -733,7 +705,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     flow_sensor1 = port[0]
                     live_ports['f'] = i
 
-    #pressureIDheader = ["Pressure Sensor ID", "TEMP"] ########################################################################
+    #pressureIDheader = ["Pressure Sensor ID", "TEMP"] ######################################################
     try:
         pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
         if dual_flow:
@@ -776,7 +748,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     resp_json = response.json()
                     raw_hex = resp_json.get("data", {}).get("value")
                     if slot == 'p':
-                        p = decodePressureIFM(raw_hex)[p_unit_index]
+                        if pressure_sensor == "PN7692 IFM Pressure Sensor":
+                            p = decodePressureIFM(raw_hex)[p_unit_index]
+                        elif pressure_sensor == "PN7670 IFM Pressure Sensor":
+                            p = decodeHighPressureIFM(raw_hex)[p_unit_index]
+                        else:
+                            p = decodePressureKey(raw_hex)[p_unit_index]
                     if dual_flow:
                         if slot == 'f1':
                             f1 = decodeFlowKey(raw_hex)[f_unit_index]
@@ -785,10 +762,13 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                             f2 = decodeFlowKey(raw_hex)[f_unit_index]
                             if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
                     else:
-                        if slot == 'f':
+                        print("Flow sensor 1: "+str(flow_sensor1))
+                        if slot == 'f' and flow_sensor1 == "SU8021 IFM Flow Meter":
+                            f = decodeFlowIFM(raw_hex)[f_unit_index]
+                        elif slot == 'f':
                             f = decodeFlowKey(raw_hex)[f_unit_index]
                             if f < -1000 and len(f_data)>2: f=f_data[-1]
-                p=0#########################
+                #p=0#########################
                 t = datetime.now()
                 if first_sample:
                     et = 0.0
@@ -900,9 +880,16 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     os.remove(csv_path)
     messagebox.showinfo("File Saved", f"File saved to:\n{file_path}")
 
+
+def testConnection(s):
+        url = "http://192.168.50.10/iolinkmaster"
+        try:
+            response = s.post(url, json=PORT1_PAYLOAD, timeout=2)
+            return response.status_code == 200
+        except:
+            return False
     
 if __name__ == "__main__": # on application enter:
-
     try:
         if pyi_splash.is_alive():
             pyi_splash.close()
@@ -910,9 +897,10 @@ if __name__ == "__main__": # on application enter:
         pass
 
     session = requests.Session() 
-    user_ip = askForIP(session).get("ip")
-    if user_ip:
-        url = f"http://{user_ip}/iolinkmaster"
+    url = "http://192.168.50.10/iolinkmaster"
+    if testConnection(session):
         settings = combinedWindow()
         if settings:
             live_plot()
+    else:
+        messagebox.showerror("Error: Failed to Connect","Unable to locate IPI Flow Skid. Ensure you are connected to the provided router (IPI DFM).")
