@@ -8,7 +8,7 @@ import pandas as pd
 import time
 from matplotlib.gridspec import GridSpec
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
+from tkinter import ttk, messagebox, filedialog
 import sys
 import os
 from contextlib import suppress
@@ -48,12 +48,8 @@ PORT3_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[3]/iolinkd
 PORT4_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ---------- Detecting IP ----------
-def normalize_mac(mac: str):#
-    return mac.replace(":", "").replace("-","").lower() if mac else None
-
 # ---------- Decoders ----------
-def decodeHighPressureIFM(raw_hex):
+def decodeHighPressureIFM(raw_hex): # decode raw hex data from IFM high pressure sensor (PN7670)
     bit_len = 4*len(raw_hex)
     bin_value = format(int(raw_hex,16), f'0{bit_len}b')[2:-2]
     bar = (float(int(bin_value,2)))
@@ -87,7 +83,7 @@ def decodeFlowIFM(raw_hex): # decode raw hex data from IFM flow meter
     G_min = L_min * 0.2641720524
     return [L_min, G_min]
 
-def decodePressureKey(raw_hex):
+def decodePressureKey(raw_hex): # decode raw hex data from Keyence pressure transducer
     bit_len = 4*len(raw_hex)
     bin_value = format(int(raw_hex,16), f'0{bit_len}b')[:16]
     psi = float(int(bin_value,2))
@@ -102,90 +98,6 @@ def resource_path(relative_path): # join os paths to base paths for accessing fi
     else:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
-
-def askForIP(session): # Unused, for direct IP connection support
-
-    def saveIP(ip: str):
-        data = {"last_ip":ip}
-        with open(CACHE_FILE, "w") as f:
-            json.dump(data, f)
-
-    def loadIP()-> str:
-        if CACHE_FILE.exists():
-            with open(CACHE_FILE, "r") as f:
-                data = json.load(f)
-                return data.get("last_ip")
-        return None
-
-    s = session
-    results = {}
-    entry_font = ("Arial", 14)
-    root = tk.Tk()
-    root.attributes('-topmost', True)
-    root.focus_force()
-    root.title("FlowPRO")
-    WINDOW_WIDTH = 500
-    WINDOW_HEIGHT = 300
-    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-    root.resizable(False, False)
-
-    title_label = tk.Label(root, text="Direct Connect to Flow Skid", font=("Arial", 20, "bold"), fg="blue")
-    title_label.pack(pady=10)
-
-    main_frame = ttk.Frame(root, relief='solid')
-    main_frame.pack(fill="both", expand=True,pady=10,padx=10)
-
-    header = ttk.Label(main_frame, text="Please enter the IP displayed on the router inside the weatherproof box on your flow skid.",
-                       font=("Arial",14), wraplength=400, justify='center')
-    header.pack(expand=True, pady=10, padx=20)
-
-    status_var = tk.StringVar(value="Enter an IP address to test connection")
-    status_label = tk.Label(main_frame, textvariable=status_var, font=("Arial", 12),
-                            relief="solid", padx=5, pady=5, justify="center",fg="blue")
-    status_label.pack(padx=80, pady=10)
-
-    ip = tk.Entry(main_frame, font=entry_font)
-    ip.config(width=20)
-    ip.config(selectborderwidth=3, width=20,justify='center')
-    ip.pack(pady=10)
-    ip.focus_set()
-    cached_ip = loadIP()
-    if cached_ip:
-        ip.insert(0, cached_ip)
-
-    def testIP(testip): # Unused
-        url = f"http://{testip}/iolinkmaster"
-        try:
-            response = s.post(url, json=PORT1_PAYLOAD, timeout=2)
-            return response.status_code == 200
-        except:
-            status_var.set("Connection failed, please retry")
-            root.update()
-            return False
-
-    def submit(): # Unused
-        current = ip.get()
-        ip.delete(0, tk.END)
-        ip.insert(0,"Working...")
-        submit_button.config(state="disabled")
-        testip = "".join(current.split())
-        root.update()
-        if testIP(testip):
-            results['ip'] = testip
-            saveIP(testip)
-            root.destroy()
-        else:
-            submit_button.config(state="normal")
-            ip.delete(0, tk.END)
-            ip.insert(0,current)
-            root.update()
-    
-    style = ttk.Style()
-    style.configure("Big.TButton",font=("Arial",14,"bold"))
-    submit_button = ttk.Button(main_frame, text="Submit", command=submit, style='Big.TButton')
-    submit_button.pack(pady=10, ipadx=5, ipady=5)
-    root.wait_window()
-    return results
 
 # ---------- Settings GUI -----------
 def combinedWindow():  # Creates the combined settings/port overview screen
@@ -334,7 +246,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     graph_format.grid(row=2, column=1, pady=pady_val, sticky="ew", ipady=ipady_val)
     graph_format.config(width=20)
 
-    # Sample Interval
+    # Sample Rate
     sample_rate_values = ["0.5 Seconds","1 Second ","5 Seconds","10 Seconds","30 Seconds","60 Seconds"]
     sample_rate_var = tk.StringVar(value=sample_rate_values[3])
 
@@ -364,7 +276,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     # Numeric fields
     fields = ["Pressure Min","Pressure Max","Flow Min","Flow Max"]
     entries = []
-    for i, name in enumerate(fields, start=4):
+    for i, name in enumerate(fields, start=4): # Enable the Auto Scale automatically populating in the max/min fields
         ttk.Label(leftFrame, text=name).grid(row=i, column=0, sticky="w", pady=pady_val)
         entry = tk.Entry(leftFrame, font=entry_font)
         entry.insert(0, placeholder)
@@ -409,7 +321,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
     except Exception as e:
         print(f"Error loading image: {e}")
 
-    # ------------------- Info Icons (Simplified "i") -------------------
+    # ------------------- Info Icons -------------------
     info_texts = [
         "Select the pressure unit to display during the test. Supported pressure units are psi, bar, and kPa. NOTE: The selected unit in FlowPRO is independent of the displayed unit on the pressure sensor. Both readouts are displayed correctly in their respective units.",
         "Select the flow unit to display during the test. Supported flow units are L/min and GPM. NOTE: The selected unit in FlowPRO is independent of the displayed units on the flow meter. Both readouts are displayed correctly in their respective units.",
@@ -440,7 +352,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
         rightFrame.grid_columnconfigure(c, weight=1)
 
     titles = ["Port 1","Port 2","Port 3","Port 4"]
-    for i, t in enumerate(titles):
+    for i, t in enumerate(titles): # populate port frames
         r = i // 2
         c = i % 2
         pf = createPortFrame(rightFrame, t)
@@ -456,13 +368,20 @@ def combinedWindow():  # Creates the combined settings/port overview screen
 def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting, and saving the recorded data
     global running, current_interval, selected_interval, burst_mode, dual_flow
     global next_time, testnameheader, starttimeheader, pressureIDheader, flowIDheader, settings
-    global port1, port2, port3, port4 # because ports are assigned in combinedWindow()
+    global port1, port2, port3, port4
+
+    if not settings: # settings window was exited
+        return 
+    if not settings.get('filename'): # no filename entered
+        messagebox.showwarning("No Filename","Please retry and submit a file name.")
+        return
 
     ipiblue = "#5778A5"
     ipigold = "#F2B700"
     darkblue = "#003466"
     packerblue = "#0865CA"
     gray = "#EAEBED"
+
     ports = [port1, port2, port3, port4]
     flownum = 0
     for port in ports:
@@ -472,12 +391,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         dual_flow = True
 
     plt.ion()
-    
-    if not settings:
-        return
-    if not settings.get('filename'):
-        messagebox.showwarning("No Filename","Please retry and submit a file name.")
-        return
     
     p_unit = settings.get('pressure_unit')
     f_unit = settings.get('flow_unit')
@@ -600,7 +513,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     ax_burst_box.add_patch(burst_box)
 
     # --- Buttons ---
-
     ax_start = plt.axes([0.71, 0.75, 0.1, 0.075])
     btn_start = Button(ax_start, "Start", color=ipiblue, hovercolor=darkblue)
     btn_start.label.set_color(gray)
@@ -622,7 +534,6 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         btn.label.set_fontweight("bold")
 
     # --- Button click Events ---
-
     def start(event): # what to do on start click
         global running
         running = True
@@ -784,7 +695,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                             writer.writerow([t, et, p, f1, f2])
                         else:
                             writer.writerow([t, et, p, f])
-                except UnboundLocalError:
+                except UnboundLocalError: # either p or f was never assigned, or was unplugged
                     messagebox.showerror("Error","Please ensure that all sensors are properly connected.")
                     return
                 
@@ -818,6 +729,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 if p > p_max:
                     p_max = p+5
                     ax1.set_ylim(p_min, p_max)
+
                 # --- Keep sliding window ---
                 if(sliding):
                     window_size = 300
@@ -880,7 +792,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     messagebox.showinfo("File Saved", f"File saved to:\n{file_path}")
 
 
-def testConnection(s):
+def testConnection(s): # check the ip for success response status code 200
         url = "http://192.168.50.10/iolinkmaster"
         try:
             response = s.post(url, json=PORT1_PAYLOAD, timeout=2)
@@ -891,7 +803,7 @@ def testConnection(s):
 if __name__ == "__main__": # on application enter:
     try:
         if pyi_splash.is_alive():
-            pyi_splash.close()
+            pyi_splash.close() # close the pyinstaller splash screen
     except Exception as e:
         pass
 
