@@ -16,7 +16,6 @@ from PIL import Image, ImageTk
 import os
 import csv
 import matplotlib.image as mpimg
-import json
 from pathlib import Path
 
 if getattr(sys, 'frozen', False):
