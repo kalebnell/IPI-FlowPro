@@ -1,5 +1,7 @@
 Welcome to IPI FlowPRO!
 
-To begin running the program, run the flowpro.exe file within this folder.
-It is important you do not move the flowpro.exe file from this folder, nor should you alter any contents of the _internal file.
-Refer to the FlowPro operating instructions to begin using the app.
+To begin using FlowPRO, connect to an IPI flow skid through the proveded IPI DFM _ _ _ Router, or connect via an ethernet cable to the ethernet port on the exterior of the skid's weatherproof box.
+
+Install and launch IPI FlowPRO to begin setting parameters, visualizing your sensor's readings, and recording data.
+
+Refer to FlowPRO operating instructions for more.
