@@ -13,7 +13,6 @@ import sys
 import os
 from contextlib import suppress
 from PIL import Image, ImageTk
-import subprocess
 import os
 import csv
 import matplotlib.image as mpimg
@@ -22,9 +21,9 @@ from pathlib import Path
 
 if getattr(sys, 'frozen', False):
     with suppress(ModuleNotFoundError):
-        import pyi_splash # shows error becasue pyi_splash is not yet loaded, still functional
+        import pyi_splash # type: ignore : shows error becasue pyi_splash is not yet loaded, still functional
 
-#pyinstaller: python -m PyInstaller --noconsole --onedir --icon=images/croppedlogo.ico --splash=images/Loading.png --add-data "images;images" flowpro.py
+#pyinstaller: python -m PyInstaller  --onedir --noconsole --icon=images/croppedlogo.ico --splash=images/Loading.png --add-data "images;images" flowpro.py
 
 # ---------- Globals ----------
 running = False
