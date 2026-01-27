@@ -409,16 +409,16 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
     def safe_number(n, default): # returns a default value if non-numeric
         try:
-            return float(n)
+            return float(n), True
         except:
-            return default
+            return default, False
         
-    p_min = safe_number(settings.get('pressure_min'), 0)
-    p_max = safe_number(settings.get('pressure_max'), 50)
-    f_min = safe_number(settings.get('flow_min'), 0)
-    f_max = safe_number(settings.get('flow_max'), 10)
+    p_min, _ = safe_number(settings.get('pressure_min'), 0)
+    p_max, p_max_entered = safe_number(settings.get('pressure_max'), 50)
+    f_min, f_min_entered = safe_number(settings.get('flow_min'), 0)
+    f_max, f_max_entered = safe_number(settings.get('flow_max'), 10)
 
-    selected_interval = safe_number(settings.get('interval'), 10)
+    selected_interval, _ = safe_number(settings.get('interval'), 10)
     current_interval = selected_interval
 
     filename = str(settings.get('filename'))
@@ -614,9 +614,9 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     flow_sensor1 = port[0]
                     live_ports['f'] = i
 
-    #pressureIDheader = ["Pressure Sensor ID", "TEMP"] ######################################################
+    pressureIDheader = ["Pressure Sensor ID", "TEMP"] ######################################################
     try:
-        pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
+        #pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
         if dual_flow:
             flowIDheader1 = ["High Flow ID", flow_sensor1]
             flowIDheader2 = ["Low Flow ID", flow_sensor2]
@@ -671,13 +671,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                             f2 = decodeFlowKey(raw_hex)[f_unit_index]
                             if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
                     else:
-                        print("Flow sensor 1: "+str(flow_sensor1))
                         if slot == 'f' and flow_sensor1 == "SU8021 IFM Flow Meter":
                             f = decodeFlowIFM(raw_hex)[f_unit_index]
                         elif slot == 'f':
                             f = decodeFlowKey(raw_hex)[f_unit_index]
                             if f < -1000 and len(f_data)>2: f=f_data[-1]
-                #p=0#########################
+                p=0#########################
                 t = datetime.now()
                 if first_sample:
                     et = 0.0
@@ -706,26 +705,26 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 else:
                     f_data.append(f)
                 if dual_flow:
-                    if f1 > f_max:
+                    if f1 > f_max and not f_max_entered:
                         f_max = f1+5
                         ax2.set_ylim(f_min, f_max)
-                    if f2 > f_max:
+                    if f2 > f_max and not f_max_entered:
                         f_max = f2+5
                         ax2.set_ylim(f_min, f_max)
-                    if f1 < f_min:
+                    if f1 < f_min and not f_min_entered:
                         f_min = f1-5
                         ax2.set_ylim(f_min, f_max)
-                    if f2 < f_min:
+                    if f2 < f_min and not f_min_entered:
                         f_min = f2-5
                         ax2.set_ylim(f_min, f_max)
                 else:
-                    if f > f_max:
+                    if f > f_max and not f_max_entered:
                         f_max = f+5
                         ax2.set_ylim(f_min, f_max)
-                    if f < f_min:
+                    if f < f_min and not f_min_entered:
                         f_min = f-5
                         ax2.set_ylim(f_min, f_max)
-                if p > p_max:
+                if p > p_max and not p_max_entered:
                     p_max = p+5
                     ax1.set_ylim(p_min, p_max)
 
