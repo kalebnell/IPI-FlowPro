@@ -7,7 +7,7 @@ import bisect
 
 
 url = "http://192.168.50.10/iolinkmaster"
-PORT_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[8]/iolinkdevice/pdin/getdata"}
+PORT_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
 
 def decodeHighPressureIFM(raw_hex): # decode raw hex data from IFM high pressure sensor (PN7670)
     bit_len = 4*len(raw_hex)
@@ -54,12 +54,29 @@ def decode8060(raw_hex):
     
 def decode7602(raw_hex):
     bit_len = 4*len(raw_hex)
-    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[0:16]
+    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')
     print(bin_value)
     bar = (float(int(bin_value, 2))) / 100
     psi = bar * 14.5038
     Kpa = bar * 100
     return [bar, psi, Kpa]
+
+def decodeEHFlow(raw_hex):
+    bit_len = 4*len(raw_hex)
+    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[-56:-24]
+    sign = int(bin_value[0], 2)
+    exponent = int(bin_value[1:9], 2)
+    mantissa_bits = bin_value[9:32]
+    mantissa = 1.0
+    for i, bit in enumerate(mantissa_bits, start=1):
+        if bit == "1":
+            mantissa += 2 ** -i
+
+    L_sec = (-1) ** sign * mantissa * 2 ** (exponent - 127)
+    L_min = L_sec * 60
+    G_min = L_min * 0.264172
+
+    return [L_min, G_min]
 
 def findDevice(portNum): # id device by IoT deviceID
         deviceIDs = {
@@ -80,6 +97,7 @@ def findDevice(portNum): # id device by IoT deviceID
             1216: ["PV8060 IFM Pressure Sensor", "p", "images/8060.jpg"],
             853: ["PV7602 IFM Pressure Sensor", "p", "images/8060.jpg"],
             1067940: ["PA-23SXio Keller Pressure Sensor", "p", "images/keller.jpg"],
+            65793: ["Endress Hauser Picomag", "f", "images/picomag.jpg"]
         }
         try:
             payload = {"code":"request","cid":-1,
@@ -91,23 +109,11 @@ def findDevice(portNum): # id device by IoT deviceID
             if id_val in deviceIDs.keys():
                 return deviceIDs[id_val]
             else:
-                return decodeKeller23SXio(id_val)
+                return decodeEHFlow(id_val)
                 #return id_val
         except Exception as e:
             print(f"Port {portNum} detection failed: {e}")
             return None
 
 
-
-# a = [1,2,3,4,5,6,7,8,9,10]
-# left = bisect.bisect_left(a, 1)
-# right = bisect.bisect_right(a, 10)
-# selected = slice(left, right)
-# print(selected.start)
-
-
-
-
-
-a = [1,2,3,4,5,6,7,8,9,10]
-print(a[-5:])
+print(findDevice(4))

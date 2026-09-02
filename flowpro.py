@@ -54,7 +54,7 @@ PORT5_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[5]/iolinkd
 PORT6_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[6]/iolinkdevice/pdin/getdata"}
 PORT7_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[7]/iolinkdevice/pdin/getdata"}
 PORT8_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[8]/iolinkdevice/pdin/getdata"}
-VERSION_NUMBER = "1.1.4"
+VERSION_NUMBER = "1.1.5"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -128,6 +128,23 @@ def decodeFlowKey(raw_hex): # decode raw hex data from Keyence flow meter FD-H20
     if(L_min > 100):
         L_min -= 42949672.96
     G_min = L_min*0.264172
+    return [L_min, G_min]
+
+def decodeEHFlow(raw_hex):
+    bit_len = 4*len(raw_hex)
+    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[-56:-24]
+    sign = int(bin_value[0], 2)
+    exponent = int(bin_value[1:9], 2)
+    mantissa_bits = bin_value[9:32]
+    mantissa = 1.0
+    for i, bit in enumerate(mantissa_bits, start=1):
+        if bit == "1":
+            mantissa += 2 ** -i
+
+    L_sec = (-1) ** sign * mantissa * 2 ** (exponent - 127)
+    L_min = L_sec * 60
+    G_min = L_min * 0.264172
+
     return [L_min, G_min]
 
 def decodeFlowIFM(raw_hex): # decode raw hex data from IFM flow meter 
@@ -240,7 +257,8 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             69131: ["AXL E IOL TC4/K M12 Thermocouple Converter", "t", "images/thermocouple_converter.jpg"],
             1216: ["PV8060 IFM Pressure Sensor", "p", "images/8060.jpg"],
             853: ["PV7602 IFM Pressure Sensor", "p", "images/8060.jpg"],
-            1067940: ["PA-23SXio Keller Pressure Sensor", "p", "images/keller.jpg"]
+            1067940: ["PA-23SXio Keller Pressure Sensor", "p", "images/keller.jpg"],
+            65793: ["Endress Hauser Picomag", "f", "images/picomag.jpg"]
         }
         try:
             payload = {"code":"request","cid":-1,
