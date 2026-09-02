@@ -144,7 +144,6 @@ def decodeEHFlow(raw_hex):
     L_sec = (-1) ** sign * mantissa * 2 ** (exponent - 127)
     L_min = L_sec * 60
     G_min = L_min * 0.264172
-
     return [L_min, G_min]
 
 def decodeFlowIFM(raw_hex): # decode raw hex data from IFM flow meter 
@@ -249,7 +248,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             2016: ["Keyence FD-H20 Flow Meter", "f", "images/key_flow_img.jpg"],
             2008: ["Keyence GPM400-T", "p", "images/key_pressure_img.jpg"],
             450: ["PN7670 IFM Pressure Sensor", "p", "images/ifm_high_pressure_img.jpg"],
-            610: ["DP4200 IFM 4-20mA Converter", "p", "images/DP4200.jpg"],
+            610: ["DP4200 IFM 4-20mA Converter", "dp4200", "images/DP4200.jpg"], 
             1871: ["PG1402 IFM Pressure Sensor", "p", "images/ifm_1402_pressure.png"],
             629: ["PN7292/PN7692 Status B IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
             472: ["PN2293 IFM Pressure Sensor", "p", "images/ifm_pressure_img.jpg"],
@@ -889,6 +888,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         def apply(self):
             self.result = (self.e1.get(), self.e2.get())
 
+    found = False
     flow_sensor1 = None
     live_ports = {}
     for i, port in enumerate(ports):
@@ -901,9 +901,10 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 live_ports['p'] = i
             elif port[1] == 'f':
                 if dual_flow:
-                    if port[0] == "Keyence FD-H20 Flow Meter":
+                    if not found:
                         flow_sensor1 = port[0]
                         live_ports['f1'] = i
+                        found = True
                     else:
                         flow_sensor2 = port[0]
                         live_ports['f2'] = i
@@ -996,26 +997,48 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                                 p = decodeHighPressureIFM(raw_hex)[p_unit_index]
                             elif pressure_sensor == "PG1402 IFM Pressure Sensor":
                                 p = decodePressure_1402(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PN2293/PN2693 Status B IFM Pressure Sensor":
+                            elif pressure_sensor == "PN2293 Status B IFM Pressure Sensor":
                                 p = decodePressure2293B(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PN2293/PN2693 IFM Pressure Sensor":
+                            elif pressure_sensor == "PN2293 IFM Pressure Sensor":
                                 p = decodePressure2293(raw_hex)[p_unit_index]
+                            elif pressure_sensor == "PV8060 IFM Pressure Sensor":
+                                p = decode8060(raw_hex)[p_unit_index]
+                            elif pressure_sensor == "PV7602 IFM Pressure Sensor":
+                                p = decode7602(raw_hex)[p_unit_index]
+                            elif pressure_sensor == "PA-23SXio Keller Pressure Sensor":
+                                p = decodeKeller23SXio(raw_hex)[p_unit_index]
                             else:
                                 p = decodePressureKey(raw_hex)[p_unit_index]
                         elif slot == 'dp4200':
                             downhole_pressure = decode_4_20_mA_Pressure(raw_hex, start_val, end_val)[p_unit_index]
                         if dual_flow:
                             if slot == 'f1':
-                                f1 = decodeFlowKey(raw_hex)[f_unit_index]
-                                if f1 < -1000 and len(f_data)>2: f1=f_data[-1]
+                                if flow_sensor1 == "Keyence FD-H10 Flow Meter" or flow_sensor1 == "Keyence FD-H20 Flow Meter":
+                                    f1 = decodeFlowKey(raw_hex)[f_unit_index]
+                                    if f1 < -1000 and len(f_data)>2: f1=f_data[-1]
+                                elif flow_sensor1 == "Keyence FD-H32 Flow Meter":
+                                    f1 = decodeFDH32_flow(raw_hex)[f_unit_index]
+                                elif flow_sensor1 == "SU8021 IFM Flow Meter":
+                                    f1 = decodeFlowIFM(raw_hex)[f_unit_index]
+                                elif flow_sensor1 == "Endress Hauser Picomag":
+                                    f1 = decodeEHFlow(raw_hex)[f_unit_index]
                             elif slot == 'f2':
-                                f2 = decodeFlowKey(raw_hex)[f_unit_index]
-                                if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
+                                if flow_sensor2 == "Keyence FD-H10 Flow Meter" or flow_sensor2 == "Keyence FD-H20 Flow Meter":
+                                    f2 = decodeFlowKey(raw_hex)[f_unit_index]
+                                    if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
+                                elif flow_sensor2 == "Keyence FD-H32 Flow Meter":
+                                    f2 = decodeFDH32_flow(raw_hex)[f_unit_index]
+                                elif flow_sensor2 == "SU8021 IFM Flow Meter":
+                                    f2 = decodeFlowIFM(raw_hex)[f_unit_index]
+                                elif flow_sensor2 == "Endress Hauser Picomag":
+                                    f2 = decodeEHFlow(raw_hex)[f_unit_index]
                         else:
                             if slot == 'f' and flow_sensor1 == "SU8021 IFM Flow Meter":
                                 f = decodeFlowIFM(raw_hex)[f_unit_index]
                             elif slot =='f' and flow_sensor1 == "Keyence FD-H32 Flow Meter":
                                 f = decodeFDH32_flow(raw_hex)[f_unit_index]
+                            elif slot == 'f' and flow_sensor1 == "Endress Hauser Picomag":
+                                f = decodeEHFlow(raw_hex)[f_unit_index]
                             elif slot == 'f':
                                 f = decodeFlowKey(raw_hex)[f_unit_index]
                                 if f < -1000 and len(f_data)>2: f=f_data[-1]

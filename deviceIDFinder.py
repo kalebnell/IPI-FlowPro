@@ -7,7 +7,7 @@ import bisect
 
 
 url = "http://192.168.50.10/iolinkmaster"
-PORT_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[4]/iolinkdevice/pdin/getdata"}
+PORT_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkdevice/pdin/getdata"}
 
 def decodeHighPressureIFM(raw_hex): # decode raw hex data from IFM high pressure sensor (PN7670)
     bit_len = 4*len(raw_hex)
@@ -80,19 +80,19 @@ def decodeEHFlow(raw_hex):
 
 def findDevice(portNum): # id device by IoT deviceID
         deviceIDs = {
-            2015: ["Keyence FD-H10 Flow Meter", "f","images/key_flow_img.jpg"],
-            2017: ["Keyence FD-H32 Flow Meter", "f", "images/key_flow_img.jpg"],
-            1463: ["SU8021 IFM Flow Meter", "f","images/ifm_flow_img.jpg"],
-            452:  ["PN7692/PN7292 IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
+            2015: ["Keyence FD-H10 Flow Meter", "f","images/key_flow_img.jpg"],#
+            2017: ["Keyence FD-H32 Flow Meter", "f", "images/key_flow_img.jpg"],#
+            1463: ["SU8021 IFM Flow Meter", "f","images/ifm_flow_img.jpg"],#
+            452:  ["PN7692/PN7292 IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"], #
             1313: ["EIO344 IFM Moneo Blue|Classic Adapter", None,"images/ifm_moneo_img.jpg"],
-            2016: ["Keyence FD-H20 Flow Meter", "f", "images/key_flow_img.jpg"],
-            2008: ["Keyence GPM400-T", "p", "images/key_pressure_img.jpg"],
-            450: ["PN7670 IFM Pressure Sensor", "p", "images/ifm_high_pressure_img.jpg"],
-            610: ["DP4200 IFM 4-20mA Converter", "p", "images/DP4200.jpg"],
-            1871: ["PG1402 IFM Pressure Sensor", "p", "images/ifm_1402_pressure.png"],
-            629: ["PN7292/PN7692 Status B IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
-            472: ["PN2293 IFM Pressure Sensor", "p", "images/ifm_pressure_img.jpg"],
-            988: ["PN2293 Status B IFM Pressure Sensor", "p", "images/ifm_pressure_img.jpg"],
+            2016: ["Keyence FD-H20 Flow Meter", "f", "images/key_flow_img.jpg"],#
+            2008: ["Keyence GPM400-T", "p", "images/key_pressure_img.jpg"], #
+            450: ["PN7670 IFM Pressure Sensor", "p", "images/ifm_high_pressure_img.jpg"],#
+            610: ["DP4200 IFM 4-20mA Converter", "dp4200", "images/DP4200.jpg"],#
+            1871: ["PG1402 IFM Pressure Sensor", "p", "images/ifm_1402_pressure.png"],#
+            629: ["PN7292/PN7692 Status B IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],#
+            472: ["PN2293 IFM Pressure Sensor", "p", "images/ifm_pressure_img.jpg"],#
+            988: ["PN2293 Status B IFM Pressure Sensor", "p", "images/ifm_pressure_img.jpg"],#
             69131: ["AXL E IOL TC4/K M12 Thermocouple Converter", "t", "images/thermocouple_converter.jpg"],
             1216: ["PV8060 IFM Pressure Sensor", "p", "images/8060.jpg"],
             853: ["PV7602 IFM Pressure Sensor", "p", "images/8060.jpg"],
@@ -116,4 +116,4 @@ def findDevice(portNum): # id device by IoT deviceID
             return None
 
 
-print(findDevice(4))
+print(findDevice(2))
