@@ -16,6 +16,7 @@ import csv
 import matplotlib.image as mpimg
 import json
 from pathlib import Path
+from matplotlib.ticker import MultipleLocator, FuncFormatter
 
 if getattr(sys, 'frozen', False):
     with suppress(ModuleNotFoundError):
@@ -43,6 +44,7 @@ port7 = None
 port8 = None
 dual_flow = False
 dual_pressure = False
+dual_pressure_sensors = False
 eight_port = False
 CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share"))
 CACHE_FILE = CACHE_DIR / "last_test_settings.json"
@@ -54,7 +56,7 @@ PORT5_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[5]/iolinkd
 PORT6_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[6]/iolinkdevice/pdin/getdata"}
 PORT7_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[7]/iolinkdevice/pdin/getdata"}
 PORT8_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[8]/iolinkdevice/pdin/getdata"}
-VERSION_NUMBER = "1.1.5"
+VERSION_NUMBER = "1.1.6"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -63,6 +65,11 @@ def safe_number(n, default): # returns a default value if non-numeric
         return float(n), True
     except:
         return default, False
+
+def format_time_axis(x, pos):
+    if x < 120:
+        return f"{x:g} s"
+    return f"{x / 60:g} min"
 
 # ---------- Decoders ----------
 def decodeTC(raw_hex):
@@ -89,11 +96,20 @@ def decode8060(raw_hex):
     
 def decode7602(raw_hex):
     bit_len = 4*len(raw_hex)
-    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[0:16]
+    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[:16]
     bar = (float(int(bin_value, 2))) / 100
     psi = bar * 14.5038
     Kpa = bar * 100
     return [bar, psi, Kpa]
+
+def decode7600(raw_hex):
+    bit_len = 4*len(raw_hex)
+    bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[:16]
+    bar = (float(int(bin_value, 2))) / 100
+    psi = bar * 14.5038
+    Kpa = bar * 100
+    return [bar, psi, Kpa]
+
 
 def decodeHighPressureIFM(raw_hex): # decode raw hex data from IFM high pressure sensor (PN7670)
     bit_len = 4*len(raw_hex)
@@ -244,7 +260,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             2017: ["Keyence FD-H32 Flow Meter", "f", "images/key_flow_img.jpg"],
             1463: ["SU8021 IFM Flow Meter", "f","images/ifm_flow_img.jpg"],
             452:  ["PN7692/PN7292 IFM Pressure Sensor", "p","images/ifm_pressure_img.jpg"],
-            1313: ["EIO344 IFM Moneo Blue|Classic Adapter", None,"images/ifm_moneo_img.jpg"],
+            1313: ["EIO330 IFM Moneo Blue|Classic Adapter", None,"images/ifm_moneo_img.jpeg"],
             2016: ["Keyence FD-H20 Flow Meter", "f", "images/key_flow_img.jpg"],
             2008: ["Keyence GPM400-T", "p", "images/key_pressure_img.jpg"],
             450: ["PN7670 IFM Pressure Sensor", "p", "images/ifm_high_pressure_img.jpg"],
@@ -256,6 +272,7 @@ def combinedWindow():  # Creates the combined settings/port overview screen
             69131: ["AXL E IOL TC4/K M12 Thermocouple Converter", "t", "images/thermocouple_converter.jpg"],
             1216: ["PV8060 IFM Pressure Sensor", "p", "images/8060.jpg"],
             853: ["PV7602 IFM Pressure Sensor", "p", "images/8060.jpg"],
+            851: ["PV7600 IFM Pressure Sensor", "p", "images/8060.jpg"],
             1067940: ["PA-23SXio Keller Pressure Sensor", "p", "images/keller.jpg"],
             65793: ["Endress Hauser Picomag", "f", "images/picomag.jpg"]
         }
@@ -557,11 +574,66 @@ def combinedWindow():  # Creates the combined settings/port overview screen
 
 # ---------- Plotting ----------
 def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting, and saving the recorded data
-    global running, current_interval, selected_interval, burst_mode, dual_flow, dual_pressure
+    global running, current_interval, selected_interval, burst_mode, dual_flow, dual_pressure, dual_pressure_sensors
     global next_time, testnameheader, starttimeheader, pressureIDheader, flowIDheader, settings
     global port1, port2, port3, port4, port5, port6, port7, port8
 
-    running, burst_mode, dual_flow, dual_pressure = False, False, False, False
+    def decode_pressure_sensor(raw_hex, sensor):
+        if sensor == "PN7692/PN7292 IFM Pressure Sensor" or sensor == "PN7292 IFM Pressure Sensor":
+            p = decodePressureIFM(raw_hex)[p_unit_index]
+        elif sensor == "PN7292/PN7692 Status B IFM Pressure Sensor":
+            p = decodeStatusBIFM(raw_hex)[p_unit_index]
+        elif sensor == "PN7670 IFM Pressure Sensor":
+            p = decodeHighPressureIFM(raw_hex)[p_unit_index]
+        elif sensor == "PG1402 IFM Pressure Sensor":
+            p = decodePressure_1402(raw_hex)[p_unit_index]
+        elif sensor == "PN2293 Status B IFM Pressure Sensor":
+            p = decodePressure2293B(raw_hex)[p_unit_index]
+        elif sensor == "PN2293 IFM Pressure Sensor":
+            p = decodePressure2293(raw_hex)[p_unit_index]
+        elif sensor == "PV8060 IFM Pressure Sensor":
+            p = decode8060(raw_hex)[p_unit_index]
+        elif sensor == "PV7602 IFM Pressure Sensor":
+            p = decode7602(raw_hex)[p_unit_index]
+        elif sensor == "PV7600 IFM Pressure Sensor":
+            p = decode7600(raw_hex)[p_unit_index]
+        elif sensor == "PA-23SXio Keller Pressure Sensor":
+            p = decodeKeller23SXio(raw_hex)[p_unit_index]
+        else: 
+            p = decodeKeller23SXio(raw_hex)[p_unit_index]
+        return p
+
+    def decode_flow_sensor(raw_hex, sensor):
+        if sensor == "Keyence FD-H10 Flow Meter" or sensor == "Keyence FD-H20 Flow Meter":
+            f = decodeFlowKey(raw_hex)[f_unit_index]
+        elif sensor == "Keyence FD-H32 Flow Meter":
+            f = decodeFDH32_flow(raw_hex)[f_unit_index]
+        elif sensor == "SU8021 IFM Flow Meter":
+            f = decodeFlowIFM(raw_hex)[f_unit_index]
+        elif sensor == "Endress Hauser Picomag":
+            f = decodeEHFlow(raw_hex)[f_unit_index]
+        return f
+    
+    def update_time_axis():
+        xmin, xmax = ax1.get_xlim()
+        span = xmax - xmin
+
+        if span <= 120:
+            interval = 5
+        elif span <= 600:
+            interval = 30
+        elif span <= 1800:
+            interval = 120
+        elif span <= 3600:
+            interval = 300
+        elif span <= 10800:
+            interval = 600
+        else:
+            interval = 1800
+
+        ax1.xaxis.set_major_locator(MultipleLocator(interval))
+
+    running, burst_mode, dual_flow, dual_pressure, dual_pressure_sensors = False, False, False, False, False
     start_time, next_time = None, None
 
     if not settings: # settings window was exited
@@ -582,6 +654,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     four_port_ports = [port1, port2, port3, port4]
     eight_port_ports = [port1, port2, port3, port4, port5, port6, port7, port8]
     flownum = 0
+    pnum = 0
     if eight_port:
         ports = eight_port_ports
     else:
@@ -591,8 +664,12 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             flownum+=1
         if port is not None and port[0] == "DP4200 IFM 4-20mA Converter":
             dual_pressure = True
+        if port is not None and port[1] == 'p':
+            pnum+=1
     if flownum > 1:
         dual_flow = True
+    if pnum > 1:
+        dual_pressure_sensors = True
 
     plt.ion()
     
@@ -649,6 +726,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         line_dhp, = ax1.plot([], [], marker="o", color = darkblue, alpha=0.7)
     if(dual_flow):
         line_f2, = ax2.plot([], [], marker="o", color=darkblue, alpha=0.7)
+    if(dual_pressure_sensors):
+        line_p2, = ax2.plot([], [], marker="o", color=ipiblue, alpha=0.7)
     ax1.set_ylim(p_min, p_max)
     ax2.set_ylim(f_min, f_max)
 
@@ -677,6 +756,13 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         pressure_text = ax_readout.text(0.13, 0.57, "0.0"+str(settings.get('pressure_unit')), fontsize=20, ha='center', color=packerblue, fontweight='bold')
         ax_readout.text(0.88, 0.58, "Flow", fontsize=18, ha='center', color='black', fontweight='bold')
         flow_text = ax_readout.text(0.88, 0.48, "0.0"+str(settings.get('flow_unit')), fontsize=20, ha='center', color=ipigold, fontweight='bold')
+    elif dual_pressure_sensors:
+        ax_readout.text(0.88, 0.58, "Flow", fontsize=18, ha='center', color=darkblue, fontweight='bold') 
+        flow_text = ax_readout.text(0.88, 0.48, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=ipigold, facecolor='none', linewidth=2))
+        ax_readout.text(0.13, 0.68, "Pressure 1", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        pressure_text = ax_readout.text(0.13, 0.58, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=darkblue, facecolor='none', linewidth=2))
+        ax_readout.text(0.13, 0.48, "Pressure 2", fontsize=18, ha='center', color=darkblue, fontweight='bold')
+        pressure_text2 = ax_readout.text(0.13, 0.38, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=packerblue, facecolor='none', linewidth=2))
     else:
         ax_readout.text(0.13, 0.63, "Flow", fontsize=20, ha='center', color=darkblue, fontweight='bold')
         flow_text = ax_readout.text(0.13, 0.53, "0.0", fontsize=25, ha='center', color='black', fontweight='bold')
@@ -866,6 +952,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         header = ["Time Stamp", "Elapsed Time (s)", "Surface Pressure ("+p_unit+")", "Downhole Pressure ("+p_unit+")", "Flow Rate ("+f_unit+")"]
     elif(dual_flow and not dual_pressure):
         header = ["Time Stamp", "Elapsed Time (s)", "Pressure ("+p_unit+")","High Flow ("+f_unit+")","Low Flow ("+f_unit+")"]
+    elif(dual_pressure_sensors and not dual_flow and not dual_pressure):
+        header = ["Time Stamp", "Elapsed Time (s)", "Pressure 1 ("+p_unit+")", "Pressure 2 ("+p_unit+")", "Flow Rate ("+f_unit+")"]
     else:
         header = ["Time Stamp", "Elapsed Time (s)", "Pressure ("+p_unit+")","Flow Rate ("+f_unit+")"]
 
@@ -889,6 +977,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             self.result = (self.e1.get(), self.e2.get())
 
     found = False
+    found_pressure = False
     flow_sensor1 = None
     live_ports = {}
     for i, port in enumerate(ports):
@@ -897,8 +986,17 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 downhole_sensor = port[0] 
                 live_ports['dp4200'] = i
             elif port[1] == 'p':
-                pressure_sensor = port[0]
-                live_ports['p'] = i
+                if dual_pressure_sensors:
+                    if not found_pressure:
+                        pressure_sensor1 = port[0]
+                        live_ports['p1'] = i
+                        found_pressure = True
+                    else:
+                        pressure_sensor2 = port[0]
+                        live_ports['p2'] = i
+                else:
+                    pressure_sensor1 = port[0]
+                    live_ports['p'] = i
             elif port[1] == 'f':
                 if dual_flow:
                     if not found:
@@ -913,7 +1011,11 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     live_ports['f'] = i
 
     try:
-        pressureIDheader = ["Pressure Sensor ID", pressure_sensor]
+        if dual_pressure_sensors:
+            pressureIDheader1 = ["Pressure Sensor 1 ID", pressure_sensor1]
+            pressureIDheader2 = ["Pressure Sensor 2 ID", pressure_sensor2]
+        else:
+            pressureIDheader = ["Pressure Sensor ID", pressure_sensor1]
         if dual_pressure:
             downholeIDheader = ["Downhole Pressure ID", downhole_sensor]
         if dual_flow:
@@ -932,7 +1034,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         title = "Save Excel File As..."
     )
     if not file_path:
-        messagebox.showerror("File path required", "Error: No designated file location, please retry")
+        messagebox.showerror("Error: File path required", "No designated file location, please retry")
         plt.close(fig)
         return
     
@@ -973,7 +1075,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     payloads = [PORT1_PAYLOAD, PORT2_PAYLOAD, PORT3_PAYLOAD, PORT4_PAYLOAD, PORT5_PAYLOAD, PORT6_PAYLOAD, PORT7_PAYLOAD, PORT8_PAYLOAD]
 
     # --- Main loop ---
-    x_data, p_data, f_data, f_data2, dhp_data = [], [], [], [], []
+    x_data, p_data, p_data2, f_data, f_data2, dhp_data = [], [], [], [], [], []
     plt.show(block=False)
     while True:
         if not plt.fignum_exists(fig.number):
@@ -988,60 +1090,31 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     resp_json = response.json()
                     raw_hex = resp_json.get("data", {}).get("value")
                     try:
-                        if slot == 'p':
-                            if pressure_sensor == "PN7692/PN7292 IFM Pressure Sensor" or pressure_sensor == "PN7292 IFM Pressure Sensor":
-                                p = decodePressureIFM(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PN7292/PN7692 Status B IFM Pressure Sensor":
-                                p = decodeStatusBIFM(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PN7670 IFM Pressure Sensor":
-                                p = decodeHighPressureIFM(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PG1402 IFM Pressure Sensor":
-                                p = decodePressure_1402(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PN2293 Status B IFM Pressure Sensor":
-                                p = decodePressure2293B(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PN2293 IFM Pressure Sensor":
-                                p = decodePressure2293(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PV8060 IFM Pressure Sensor":
-                                p = decode8060(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PV7602 IFM Pressure Sensor":
-                                p = decode7602(raw_hex)[p_unit_index]
-                            elif pressure_sensor == "PA-23SXio Keller Pressure Sensor":
-                                p = decodeKeller23SXio(raw_hex)[p_unit_index]
-                            else:
-                                p = decodePressureKey(raw_hex)[p_unit_index]
+                        if dual_pressure_sensors:
+                            if slot == 'p1':
+                                p1 = decode_pressure_sensor(raw_hex, pressure_sensor1)
+                            elif slot == 'p2':
+                                p2 = decode_pressure_sensor(raw_hex, pressure_sensor2)
+                            elif slot == 'f':
+                                f = decode_flow_sensor(raw_hex, flow_sensor1)
+                                if f < -1000 and len(f_data)>2: f=f_data[-1]
+                        elif dual_flow:
+                            if slot == 'f1':
+                                f1 = decode_flow_sensor(raw_hex, flow_sensor1)
+                                if f1 < -1000 and len(f_data)>2: f1=f_data[-1]
+                            elif slot == 'f2':
+                                f2 = decode_flow_sensor(raw_hex, flow_sensor2)
+                                if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
+                            elif slot == 'p':
+                                p = decode_pressure_sensor(raw_hex, pressure_sensor1)
+
+                        elif slot == 'p':
+                            p = decode_pressure_sensor(raw_hex, pressure_sensor1)
                         elif slot == 'dp4200':
                             downhole_pressure = decode_4_20_mA_Pressure(raw_hex, start_val, end_val)[p_unit_index]
-                        if dual_flow:
-                            if slot == 'f1':
-                                if flow_sensor1 == "Keyence FD-H10 Flow Meter" or flow_sensor1 == "Keyence FD-H20 Flow Meter":
-                                    f1 = decodeFlowKey(raw_hex)[f_unit_index]
-                                    if f1 < -1000 and len(f_data)>2: f1=f_data[-1]
-                                elif flow_sensor1 == "Keyence FD-H32 Flow Meter":
-                                    f1 = decodeFDH32_flow(raw_hex)[f_unit_index]
-                                elif flow_sensor1 == "SU8021 IFM Flow Meter":
-                                    f1 = decodeFlowIFM(raw_hex)[f_unit_index]
-                                elif flow_sensor1 == "Endress Hauser Picomag":
-                                    f1 = decodeEHFlow(raw_hex)[f_unit_index]
-                            elif slot == 'f2':
-                                if flow_sensor2 == "Keyence FD-H10 Flow Meter" or flow_sensor2 == "Keyence FD-H20 Flow Meter":
-                                    f2 = decodeFlowKey(raw_hex)[f_unit_index]
-                                    if f2 < -1000 and len(f_data2)>2: f2=f_data2[-1]
-                                elif flow_sensor2 == "Keyence FD-H32 Flow Meter":
-                                    f2 = decodeFDH32_flow(raw_hex)[f_unit_index]
-                                elif flow_sensor2 == "SU8021 IFM Flow Meter":
-                                    f2 = decodeFlowIFM(raw_hex)[f_unit_index]
-                                elif flow_sensor2 == "Endress Hauser Picomag":
-                                    f2 = decodeEHFlow(raw_hex)[f_unit_index]
                         else:
-                            if slot == 'f' and flow_sensor1 == "SU8021 IFM Flow Meter":
-                                f = decodeFlowIFM(raw_hex)[f_unit_index]
-                            elif slot =='f' and flow_sensor1 == "Keyence FD-H32 Flow Meter":
-                                f = decodeFDH32_flow(raw_hex)[f_unit_index]
-                            elif slot == 'f' and flow_sensor1 == "Endress Hauser Picomag":
-                                f = decodeEHFlow(raw_hex)[f_unit_index]
-                            elif slot == 'f':
-                                f = decodeFlowKey(raw_hex)[f_unit_index]
-                                if f < -1000 and len(f_data)>2: f=f_data[-1]
+                            f = decode_flow_sensor(raw_hex, flow_sensor1)
+                            if f < -1000 and len(f_data)>2: f=f_data[-1]
                     except TypeError as e:
                         messagebox.showerror("Error: Sensor Disconnected", "Program has been shut down - please reconnect sensor and restart.")
                         plt.close(fig)
@@ -1064,23 +1137,57 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                             writer.writerow([t, et, p, f1, f2])
                         elif dual_pressure:
                             writer.writerow([t, et, p, downhole_pressure, f])
+                        elif dual_pressure_sensors:
+                            writer.writerow([t, et, p1, p2, f])
                         else:
                             writer.writerow([t, et, p, f])
                 except UnboundLocalError: # either p or f was never assigned, or was unplugged
                     messagebox.showerror("Error","Please ensure that all sensors are properly connected.")
                     plt.close(fig)
                     return
+                except PermissionError:
+                    messagebox.showerror("Error: Permissions Conflict", "Do not open _temp files while running a test. Also, make sure your tests are named distinctly or are saved to different destinations.")
+                    plt.close(fig)
+                    return
                 
                 x_data.append(et)
-                p_data.append(p)
                 if dual_pressure:
                     dhp_data.append(downhole_pressure)
+                    p_data.append(p)
+                    f_data.append(f)
                 if dual_flow:
                     f_data.append(f1)
                     f_data2.append(f2)
+                    p_data.append(p)
+                if dual_pressure_sensors:
+                    p_data.append(p1)
+                    p_data2.append(p2)
+                    f_data.append(f)
                 else:
                     f_data.append(f)
-                if dual_flow:
+                    p_data.append(p)
+
+                if dual_pressure_sensors:
+                    if f > f_max and not f_max_entered and not manual_f_ylim:
+                        f_max = f+5
+                        ax2.set_ylim(f_min, f_max)
+                    if f < f_min and not f_min_entered and not manual_f_ylim:
+                        f_min = f-5
+                        ax2.set_ylim(f_min, f_max)
+                    if p1 > p_max and not p_max_entered and not manual_p_ylim:
+                        p_max = p1+5
+                        ax2.set_ylim(p_min, p_max)
+                    if p1 < p_min and not p_min_entered and not manual_p_ylim:
+                        p_min = p1-5
+                        ax2.set_ylim(p_min, p_max)
+                    if p2 > p_max and not p_max_entered and not manual_p_ylim:
+                        p_max = p2+5
+                        ax2.set_ylim(p_min, p_max)
+                    if p2 < p_min and not p_min_entered and not manual_p_ylim:
+                        p_min = p2-5
+                        ax2.set_ylim(p_min, p_max)
+
+                elif dual_flow:
                     if f1 > f_max and not f_max_entered and not manual_f_ylim:
                         f_max = f1+5
                         ax2.set_ylim(f_min, f_max)
@@ -1093,6 +1200,24 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     if f2 < f_min and not f_min_entered and not manual_f_ylim:
                         f_min = f2-5
                         ax2.set_ylim(f_min, f_max)
+                    if p > p_max and not p_max_entered and not manual_p_ylim:
+                        p_max = p+5
+                        ax1.set_ylim(p_min, p_max)
+                    if p < p_min and not p_min_entered and not manual_p_ylim:
+                        p_min = p-5
+                        ax1.set_ylim(p_min, p_max)
+
+                elif dual_pressure:
+                    if downhole_pressure > p_max and not p_max_entered and not manual_p_ylim:
+                        p_max = downhole_pressure+5
+                    if downhole_pressure < p_min and not p_min_entered and not manual_p_ylim:
+                        p_min = downhole_pressure-5        
+                    if p > p_max and not p_max_entered and not manual_p_ylim:
+                        p_max = p+5
+                        ax1.set_ylim(p_min, p_max)
+                    if p < p_min and not p_min_entered and not manual_p_ylim:
+                        p_min = p-5
+                        ax1.set_ylim(p_min, p_max)
                 else:
                     if f > f_max and not f_max_entered and not manual_f_ylim:
                         f_max = f+5
@@ -1100,31 +1225,36 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     if f < f_min and not f_min_entered and not manual_f_ylim:
                         f_min = f-5
                         ax2.set_ylim(f_min, f_max)
-                if dual_pressure:
-                    if downhole_pressure > p_max and not p_max_entered and not manual_p_ylim:
-                        p_max = downhole_pressure+5
-                    if downhole_pressure < p_min and not p_min_entered and not manual_p_ylim:
-                        p_min = downhole_pressure-5
-                if p > p_max and not p_max_entered and not manual_p_ylim:
-                    p_max = p+5
-                    ax1.set_ylim(p_min, p_max)
-                if p < p_min and not p_min_entered and not manual_p_ylim:
-                    p_min = p-5
-                    ax1.set_ylim(p_min, p_max)
+                    if p > p_max and not p_max_entered and not manual_p_ylim:
+                        p_max = p+5
+                        ax1.set_ylim(p_min, p_max)
+                    if p < p_min and not p_min_entered and not manual_p_ylim:
+                        p_min = p-5
+                        ax1.set_ylim(p_min, p_max)
+
+                
 
                 # --- Keep sliding window ---
                 if(sliding):
                     window_size = 300
                     if len(x_data) > window_size:
                         x_data = x_data[-window_size:]
-                        p_data = p_data[-window_size:]
+                        
                         if dual_pressure:
                             dhp_data = dhp_data[-window_size:]
+                            f_data = f_data[-window_size:]
+                            p_data = p_data[-window_size:]
                         if dual_flow:
                             f_data = f_data[-window_size:]
                             f_data2 = f_data2[-window_size:]
+                            p_data = p_data[-window_size:]
+                        if dual_pressure_sensors:
+                            p_data = p_data[-window_size:]
+                            p_data2 = p_data[-window_size:]
+                            f_data = f_data[-window_size:]
                         else:
                             f_data = f_data[-window_size:]
+                            p_data = p_data[-window_size:]
                 # --- Update plots ---
                 line_p.set_xdata(x_data)
                 line_p.set_ydata(p_data)
@@ -1133,21 +1263,28 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 if dual_pressure:
                     line_dhp.set_xdata(x_data)
                     line_dhp.set_ydata(dhp_data)
-                if dual_flow:
+                elif dual_flow:
                     line_f2.set_xdata(x_data)
                     line_f2.set_ydata(f_data2)
+                elif dual_pressure_sensors:
+                    line_p2.set_xdata(x_data)
+                    line_p2.set_ydata(p_data2)
                 if len(x_data) > 0:
                     ax1.set_xlim(min(x_data), max(x_data))
+                    update_time_axis()
                 # --- Update readouts ---
                 if dual_flow:
                     flow_text.set_text(f"{f1:.2f}"+f_unit)
                     flow_text2.set_text(f"{f2:.2f}"+f_unit)
-
+                    pressure_text.set_text(f"{p:.2f}"+p_unit)
+                elif dual_pressure_sensors:
+                    pressure_text.set_text(f"{p1:.2f}"+p_unit)
+                    pressure_text2.set_text(f"{p2:.2f}"+p_unit)
+                    flow_text.set_text(f"{f:.2f}"+f_unit)
                 elif dual_pressure:
                     dhp_text.set_text(f"{downhole_pressure:.2f}"+p_unit)
                     pressure_text.set_text(f"{p:.2f}"+p_unit)
                     flow_text.set_text(f"{f:.2f}"+f_unit)
-
                 else:
                     flow_text.set_text(f"{f:.2f}")
                     pressure_text.set_text(f"{p:.2f}")
@@ -1185,9 +1322,10 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         })
 
         row = 0
-        header_rows = [testnameheader, starttimeheader, pressureIDheader]
+        header_rows = [testnameheader, starttimeheader]
         if dual_pressure:
             header_rows.append(downholeIDheader)
+        
 
         # --- Write multi-header rows ---
         for topheader in header_rows:
@@ -1199,12 +1337,19 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             row += 1
 
         if dual_flow:
-            for flow_header in [flowIDheader1, flowIDheader2]:
+            for flow_header in [flowIDheader1, flowIDheader2, pressureIDheader]:
                 for col, value in enumerate(flow_header):
                     worksheet.write(row, col, value, header_format)
                 row += 1
+
+        elif dual_pressure_sensors:
+            for pressure_header in [pressureIDheader1, pressureIDheader2, flowIDheader]:
+                for col, value in enumerate(pressure_header):
+                    worksheet.write(row, col, value, header_format)
+                row +=1
+
         else:
-            for col, value in enumerate(flowIDheader):
+            for col, value in enumerate(flowIDheader, pressureIDheader):
                 worksheet.write(row, col, value, header_format)
             row += 1
 
@@ -1222,7 +1367,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 worksheet.write(row, col, value, cell_format)
             row += 1
 
-        header_lists = [testnameheader, starttimeheader, pressureIDheader]
+        header_lists = [testnameheader, starttimeheader]
         if dual_pressure:
             header_lists.append(downholeIDheader)
 
@@ -1234,14 +1379,19 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             for header_list in header_lists:
                 if col_idx < len(header_list):
                     all_data.append(str(header_list[col_idx]))
-
             if dual_flow:
-                for flow_header in [flowIDheader1, flowIDheader2]:
+                for flow_header in [flowIDheader1, flowIDheader2, pressureIDheader]:
                     if col_idx < len(flow_header):
                         all_data.append(str(flow_header[col_idx]))
+            elif dual_pressure_sensors:
+                for pressure_header in [pressureIDheader1, pressureIDheader2, flowIDheader]:
+                    if col_idx < len(pressure_header):
+                        all_data.append(str(pressure_header[col_idx]))
             else:
                 if col_idx < len(flowIDheader):
                     all_data.append(str(flowIDheader[col_idx]))
+                if col_idx < len(pressureIDheader):
+                    all_data.append(str(pressureIDheader[col_idx]))
 
             # Include column title row
             if col_idx < len(header):
@@ -1252,6 +1402,26 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
 
         # --- Create dual-axis chart ---
         chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+
+        elapsed_time = pd.to_numeric(df.iloc[:, 1], errors='coerce').dropna()
+
+        if len(elapsed_time) > 0:
+            span = elapsed_time.max() - elapsed_time.min()
+        else:
+            span = 0
+
+        if span <= 120:
+            time_interval = 5
+        elif span <= 600:
+            time_interval = 60
+        elif span <= 1800:
+            time_interval = 120
+        elif span <= 3600:
+            time_interval = 300
+        elif span <= 10800:
+            time_interval = 600
+        else:
+            time_interval = 1800
 
         # Determine row ranges
         data_start_row = row - len(df)  # first row of data (zero-indexed)
@@ -1265,7 +1435,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             chart.add_series({
                 'name':       'Pressure',
                 'categories': x_values_range,
-                'values':     f"=Sheet1!$C${data_start_row + 1}:$C${data_end_row + 1}",
+                'values':     f"=Sheet1!$E${data_start_row + 1}:$E${data_end_row + 1}",
                 'y_axis':     0,            # primary axis
                 'marker':     {'type': 'circle', 'size': 4},
                 'line':       {'color': 'blue'}
@@ -1273,13 +1443,38 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             chart.add_series({
                 'name':       'Flow 1',
                 'categories': x_values_range,
-                'values':     f"=Sheet1!$D${data_start_row + 1}:$D${data_end_row + 1}",
+                'values':     f"=Sheet1!$C${data_start_row + 1}:$C${data_end_row + 1}",
                 'y2_axis':    True,
                 'marker':     {'type': 'square', 'size': 4},
                 'line':       {'color': 'red'}
             })
             chart.add_series({
                 'name':       'Flow 2',
+                'categories': x_values_range,
+                'values':     f"=Sheet1!$D${data_start_row + 1}:$D${data_end_row + 1}",
+                'y2_axis':    True,
+                'marker':     {'type': 'diamond', 'size': 4},
+                'line':       {'color': 'orange'}
+            })
+        elif dual_pressure_sensors:
+            chart.add_series({
+                'name':       'Pressure 1',
+                'categories': x_values_range,
+                'values':     f"=Sheet1!$C${data_start_row + 1}:$C${data_end_row + 1}",
+                'y_axis':     0,            # primary axis
+                'marker':     {'type': 'circle', 'size': 4},
+                'line':       {'color': 'blue'}
+            })
+            chart.add_series({
+                'name':       'Pressure 2',
+                'categories': x_values_range,
+                'values':     f"=Sheet1!$D${data_start_row + 1}:$D${data_end_row + 1}",
+                'y2_axis':    True,
+                'marker':     {'type': 'square', 'size': 4},
+                'line':       {'color': 'green'}
+            })
+            chart.add_series({
+                'name':       'Flow',
                 'categories': x_values_range,
                 'values':     f"=Sheet1!$E${data_start_row + 1}:$E${data_end_row + 1}",
                 'y2_axis':    True,
@@ -1333,8 +1528,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             'name': 'Elapsed Time (s)',
             'major_tick_mark': 'outside',
             'minor_tick_mark': 'none',
-            'major_unit': 5,
-            'minor_unit': 1,
+            'major_unit': time_interval,
             'min': 0,
             'major_gridlines': {'visible': False},
             'minor_gridlines': {'visible': False},
@@ -1416,6 +1610,8 @@ if __name__ == "__main__":
             settings = combinedWindow()
             if not settings:
                 break
+            messagebox.showwarning("Warning: Stable Wi-Fi Connection", "Windows can automatically disconnect your Wi-Fi connection in order to have internet access. Turn off the 'Connect automatically when in range' setting or forget "
+            "your Wi-Fi to ensure stable connection to the skid.")
             live_plot()
             restart = messagebox.askyesno(
                 "Run Another Test",
@@ -1424,4 +1620,4 @@ if __name__ == "__main__":
             if not restart:
                 break
     else:
-        messagebox.showerror("Error: Failed to Connect", "Unable to locate IPI Flow Skid. Ensure you are connected to the provided router (IPI DFM).")
+        messagebox.showerror("Error: Failed to Connect", "Unable to locate IPI Flow Skid. Ensure the Flow Skid is powered on and you are connected to 'IPI DFM XXX' Wi-Fi.")
