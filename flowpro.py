@@ -105,11 +105,10 @@ def decode7602(raw_hex):
 def decode7600(raw_hex):
     bit_len = 4*len(raw_hex)
     bin_value = format(int(raw_hex, 16), f'0{bit_len}b')[:16]
-    bar = (float(int(bin_value, 2))) / 100
+    bar = (float(int(bin_value, 2))) / 10
     psi = bar * 14.5038
     Kpa = bar * 100
     return [bar, psi, Kpa]
-
 
 def decodeHighPressureIFM(raw_hex): # decode raw hex data from IFM high pressure sensor (PN7670)
     bit_len = 4*len(raw_hex)
@@ -727,7 +726,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
     if(dual_flow):
         line_f2, = ax2.plot([], [], marker="o", color=darkblue, alpha=0.7)
     if(dual_pressure_sensors):
-        line_p2, = ax2.plot([], [], marker="o", color=ipiblue, alpha=0.7)
+        line_p2, = ax1.plot([], [], marker="o", color=ipiblue, alpha=0.7)
     ax1.set_ylim(p_min, p_max)
     ax2.set_ylim(f_min, f_max)
 
@@ -760,9 +759,9 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
         ax_readout.text(0.88, 0.58, "Flow", fontsize=18, ha='center', color=darkblue, fontweight='bold') 
         flow_text = ax_readout.text(0.88, 0.48, "0.0"+str(settings.get('flow_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=ipigold, facecolor='none', linewidth=2))
         ax_readout.text(0.13, 0.68, "Pressure 1", fontsize=18, ha='center', color=darkblue, fontweight='bold')
-        pressure_text = ax_readout.text(0.13, 0.58, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=darkblue, facecolor='none', linewidth=2))
+        pressure_text = ax_readout.text(0.13, 0.58, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=packerblue, facecolor='none', linewidth=2))
         ax_readout.text(0.13, 0.48, "Pressure 2", fontsize=18, ha='center', color=darkblue, fontweight='bold')
-        pressure_text2 = ax_readout.text(0.13, 0.38, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=packerblue, facecolor='none', linewidth=2))
+        pressure_text2 = ax_readout.text(0.13, 0.38, "0.0"+str(settings.get('pressure_unit')), fontsize=25, ha='center', color='black', bbox=dict(edgecolor=darkblue, facecolor='none', linewidth=2))
     else:
         ax_readout.text(0.13, 0.63, "Flow", fontsize=20, ha='center', color=darkblue, fontweight='bold')
         flow_text = ax_readout.text(0.13, 0.53, "0.0", fontsize=25, ha='center', color='black', fontweight='bold')
@@ -1349,7 +1348,11 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                 row +=1
 
         else:
-            for col, value in enumerate(flowIDheader, pressureIDheader):
+            for col, value in enumerate(flowIDheader):
+                worksheet.write(row, col, value, header_format)
+            row += 1
+
+            for col, value in enumerate(pressureIDheader):
                 worksheet.write(row, col, value, header_format)
             row += 1
 
