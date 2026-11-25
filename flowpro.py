@@ -135,7 +135,7 @@ def decodePressureIFM(raw_hex): # decode raw hex data from IFM pressure sensor P
     Kpa = bar * 100
     return [bar, psi, Kpa]
 
-def decodeFlowKey(raw_hex): # decode raw hex data from Keyence flow meter FD-H20 Ultrasonic Flow Meter
+def decodeFlowKey(raw_hex): # decode raw hex data from Keyence FD-H20 Ultrasonic Flow Meter
     bit_len = 4*len(raw_hex)
     bin_value = format(int(raw_hex,16), f'0{bit_len}b')[:32]
     inst_flow = float(int(bin_value,2))
@@ -238,7 +238,6 @@ def decodeKeller23SXio(raw_hex):
     bar = Kpa/100
     psi = bar * 14.5038
     return [bar, psi, Kpa]
-
 
 # ---------- Pyinstaller Pathing -----------
 def resource_path(relative_path): # join os paths to base paths for accessing files
@@ -598,6 +597,8 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             p = decode7600(raw_hex)[p_unit_index]
         elif sensor == "PA-23SXio Keller Pressure Sensor":
             p = decodeKeller23SXio(raw_hex)[p_unit_index]
+        elif sensor == "Keyence GPM400-T":
+            p = decodePressureKey(raw_hex)[p_unit_index]
         else: 
             p = decodeKeller23SXio(raw_hex)[p_unit_index]
         return p
@@ -1273,17 +1274,17 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     update_time_axis()
                 # --- Update readouts ---
                 if dual_flow:
-                    flow_text.set_text(f"{f1:.2f}"+f_unit)
-                    flow_text2.set_text(f"{f2:.2f}"+f_unit)
-                    pressure_text.set_text(f"{p:.2f}"+p_unit)
+                    flow_text.set_text(f"{f1:.2f}")
+                    flow_text2.set_text(f"{f2:.2f}")
+                    pressure_text.set_text(f"{p:.2f}")
                 elif dual_pressure_sensors:
-                    pressure_text.set_text(f"{p1:.2f}"+p_unit)
-                    pressure_text2.set_text(f"{p2:.2f}"+p_unit)
-                    flow_text.set_text(f"{f:.2f}"+f_unit)
+                    pressure_text.set_text(f"{p1:.2f}")
+                    pressure_text2.set_text(f"{p2:.2f}")
+                    flow_text.set_text(f"{f:.2f}")
                 elif dual_pressure:
-                    dhp_text.set_text(f"{downhole_pressure:.2f}"+p_unit)
-                    pressure_text.set_text(f"{p:.2f}"+p_unit)
-                    flow_text.set_text(f"{f:.2f}"+f_unit)
+                    dhp_text.set_text(f"{downhole_pressure:.2f}")
+                    pressure_text.set_text(f"{p:.2f}")
+                    flow_text.set_text(f"{f:.2f}")
                 else:
                     flow_text.set_text(f"{f:.2f}")
                     pressure_text.set_text(f"{p:.2f}")
@@ -1554,6 +1555,7 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
             'major_gridlines': {'visible': False},
             'minor_gridlines': {'visible': False},
         })
+
 
         # Legend
         chart.set_legend({'position': 'bottom'})

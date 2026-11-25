@@ -7,7 +7,7 @@ import bisect
 
 
 url = "http://192.168.50.10/iolinkmaster"
-PORT_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[2]/iolinkdevice/pdin/getdata"}
+PORT_PAYLOAD = {"code": "request","cid":-1,"adr":"/iolinkmaster/port[3]/iolinkdevice/pdin/getdata"}
 
 def decodeHighPressureIFM(raw_hex): # decode raw hex data from IFM high pressure sensor (PN7670)
     bit_len = 4*len(raw_hex)
@@ -42,6 +42,14 @@ def decodeTC(raw_hex):
             temps.append((temp_c, temp_f))
 
     return temps
+
+def decodePressureKey(raw_hex): # decode raw hex data from Keyence pressure transducer
+    bit_len = 4*len(raw_hex)
+    bin_value = format(int(raw_hex,16), f'0{bit_len}b')[:16]
+    psi = float(int(bin_value,2))
+    bar = psi / 14.5038
+    Kpa = bar * 100
+    return [bar, psi, Kpa]
 
 def decode8060(raw_hex):
     bit_len = 4*len(raw_hex)
@@ -102,18 +110,18 @@ def findDevice(portNum): # id device by IoT deviceID
         try:
             payload = {"code":"request","cid":-1,
                       "adr":f"/iolinkmaster/port[{portNum}]/iolinkdevice/deviceid/getdata"}
-            portrequest = requests.post(url, json=payload, verify=False)
+            portrequest = requests.post(url, json=PORT_PAYLOAD, verify=False)
             portrequest.raise_for_status()
             json_data = portrequest.json()
             id_val = json_data.get("data", {}).get("value")
-            if id_val in deviceIDs.keys():
-                return deviceIDs[id_val]
-            else:
-                # return decodeEHFlow(id_val)
-                return id_val
+            #if id_val in deviceIDs.keys():
+                #return deviceIDs[id_val]
+            #else:
+            return decodePressureKey(id_val)
+                #return id_val
         except Exception as e:
             print(f"Port {portNum} detection failed: {e}")
             return None
 
 
-print(findDevice(4))
+print(findDevice(3))
