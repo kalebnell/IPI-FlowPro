@@ -1155,11 +1155,11 @@ def live_plot(x_unit="Time (s)"): # main method for sending, recieving, plotting
                     dhp_data.append(downhole_pressure)
                     p_data.append(p)
                     f_data.append(f)
-                if dual_flow:
+                elif dual_flow:
                     f_data.append(f1)
                     f_data2.append(f2)
                     p_data.append(p)
-                if dual_pressure_sensors:
+                elif dual_pressure_sensors:
                     p_data.append(p1)
                     p_data2.append(p2)
                     f_data.append(f)
